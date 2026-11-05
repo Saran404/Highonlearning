@@ -1,0 +1,853 @@
+# -*- coding: utf-8 -*-
+"""Generates 11_puzzles_bilingual_seed.sql containing all 85 questions from English and Tamil Puzzles PDFs."""
+import json
+import os
+
+def escape_sql(text: str) -> str:
+    if text is None:
+        return 'NULL'
+    return "N'" + text.replace("'", "''") + "'"
+
+def main():
+    # 25 Worked Examples (English)
+    worked_en = [
+        # Q1
+        ("Four friends P, Q, R, S sit in a row. Q sits immediately to the right of P. If P is at the leftmost end, what is Q’s position from the left?",
+         ["1st", "2nd", "3rd", "4th"], 1,
+         "P is at position 1. Q, being immediately right of P, is at position 2. Key Learning Point: “Immediately right/left” always means the very next position, not just anywhere further along.", "EASY"),
+        # Q2
+        ("In a week starting from Monday, if a task is done on the 3rd day, which day is it?",
+         ["Tuesday", "Wednesday", "Thursday", "Friday"], 1,
+         "Monday=1, Tuesday=2, Wednesday=3. Key Learning Point: Count the starting day as day 1, not day 0.", "EASY"),
+        # Q3
+        ("A building has 5 floors. If floor 3 is the middle floor, how many floors are above it?",
+         ["1", "2", "3", "4"], 1,
+         "Floors 4 and 5 are above floor 3 → 2 floors. Key Learning Point: Sketch a simple floor list to avoid miscounting floors above or below a reference point.", "EASY"),
+        # Q4
+        ("Rani is older than Meena but younger than Kavya. Who is the oldest?",
+         ["Rani", "Meena", "Kavya", "Cannot be determined"], 2,
+         "Order: Meena < Rani < Kavya. Key Learning Point: Chain relative clues (“older than,” “younger than”) into a single ordered list before answering.", "EASY"),
+        # Q5
+        ("Five boxes numbered 1 to 5 are stacked in numerical order, with Box 1 at the bottom. Which box is at the top?",
+         ["Box 1", "Box 3", "Box 4", "Box 5"], 3,
+         "The boxes are in numerical order from the bottom (1, 2, 3, 4, 5), so Box 5 is at the top. Key Learning Point: In a stacking sequence, the last item placed (highest number, if stacked in order) is on top.", "EASY"),
+        # Q6
+        ("Six people A, B, C, D, E, F sit around a circular table facing the centre. B is immediately to the right of A. C is second to the right of A. D is opposite A. F is immediately to the right of D. E is immediately to the left of A. Who sits immediately to the left of C?",
+         ["A", "B", "D", "F"], 1,
+         "Number the seats 1 to 6 clockwise, with A at seat 1. For people facing the centre, right = anticlockwise and left = clockwise. B (immediate right of A) = seat 6; C (second to the right of A) = seat 5; D (opposite A) = seat 4; F (immediate right of D) = seat 3; E (immediate left of A) = seat 2. Immediately left (clockwise) of C (seat 5) is seat 6 = B. Key Learning Point: For people facing the centre, immediate right = anticlockwise neighbour and immediate left = clockwise neighbour; number the seats before answering.", "MEDIUM"),
+        # Q7
+        ("A 7-floor building (1=bottom, 7=top). P lives on floor 6. Q lives three floors below P. R lives immediately above Q. On which floor does R live?",
+         ["3", "4", "5", "6"], 1,
+         "Q = 6−3 = 3. R = Q+1 = 4. Key Learning Point: Resolve each floor relationship one step at a time, using the previous answer as the reference for the next clue.", "EASY"),
+        # Q8
+        ("A meeting is scheduled on the 4th day of a week starting from Monday. If it is postponed by 3 days, on which day will it now be held?",
+         ["Saturday", "Sunday", "Monday", "Tuesday"], 1,
+         "4th day from Monday = Thursday. Postponed by 3 days: Thursday→Friday→Saturday→Sunday. Key Learning Point: First find the original day, then count the postponement separately from that day.", "EASY"),
+        # Q9
+        ("An event is held every second month, starting from January. Which month is the 4th event held in?",
+         ["May", "June", "July", "August"], 2,
+         "1st=January, 2nd=March, 3rd=May, 4th=July. Key Learning Point: For “every nth month” problems, list out each event’s month one at a time rather than trying to compute it in one step.", "EASY"),
+        # Q10
+        ("The sum of the ages of A and B is 45. A is twice as old as B. Find A’s age.",
+         ["25", "28", "30", "32"], 2,
+         "2B+B=45 → 3B=45 → B=15. A=2B=30. Key Learning Point: Express all unknowns in terms of a single variable before solving.", "EASY"),
+        # Q11
+        ("Among five students P, Q, R, S, T: P scored higher than Q but lower than R. S scored higher than R but lower than T. Who scored the highest?",
+         ["P", "R", "S", "T"], 3,
+         "Order: Q < P < R < S < T. Key Learning Point: Chain all the relative clues into a single ordered list to identify the extremes (highest/lowest).", "EASY"),
+        # Q12
+        ("20 apples are distributed among 4 children such that each child gets 2 more apples than the previous one. Find the number of apples received by the child who gets the fewest.",
+         ["2", "3", "4", "5"], 0,
+         "Let the fewest = x. Shares: x, x+2, x+4, x+6. Sum = 4x+12 = 20 → x=2. Key Learning Point: Express each share in terms of the first (smallest) share, then sum and equate to the total.", "EASY"),
+        # Q13
+        ("A 6-floor building. M is one floor above the floor where N lives. O is two floors below M. N is on floor 2. Find O’s floor.",
+         ["1", "2", "3", "4"], 0,
+         "N=2, M=N+1=3, O=M−2=1. Key Learning Point: Solve floor relationships in the order the clues build on each other, not the order they’re written.", "EASY"),
+        # Q14
+        ("Five meetings are scheduled on consecutive days starting Monday, one per day. The marketing meeting is on the 3rd day. Which day is it?",
+         ["Tuesday", "Wednesday", "Thursday", "Friday"], 1,
+         "Monday=1, Tuesday=2, Wednesday=3. Key Learning Point: In “nth day starting from …” questions, the starting day itself is Day 1.", "EASY"),
+        # Q15
+        ("A father is four times as old as his son. After 5 years, the father will be three times as old as the son. Find the son’s present age.",
+         ["8", "9", "10", "12"], 2,
+         "F=4S. F+5=3(S+5) → 4S+5=3S+15 → S=10. Key Learning Point: Set up an equation using the “after n years” condition, applying +n to both ages before equating.", "EASY"),
+        # Q16
+        ("In a row of five houses numbered 1 to 5 (left to right), the red, green, and blue houses are consecutive, with the green house immediately between the red and blue houses. The red house is to the left of the blue house. If the red house is House 1, find the position of the blue house.",
+         ["2", "3", "4", "5"], 1,
+         "The three houses are consecutive with green in the middle: Red = 1, Green = 2, Blue = 3. Key Learning Point: A “between” clue fixes an arrangement only when the positions are stated to be consecutive; read the clue for exactly what it guarantees.", "EASY"),
+        # Q17
+        ("Three friends share ₹900 such that the second gets twice the first, and the third gets thrice the second. Find the first friend’s share.",
+         ["80", "90", "100", "120"], 2,
+         "Let first=x, second=2x, third=6x. Sum=9x=900 → x=100. Key Learning Point: Express every person’s share as a multiple of the smallest share, sum them, and equate to the total.", "EASY"),
+        # Q18
+        ("Six people sit around a circular table – three men (P, Q, R) and three women (X, Y, Z) – alternately. P is between X and Y. Who sits opposite P?",
+         ["Q", "R", "X", "Z"], 3,
+         "Seats alternate man–woman. P’s two neighbours are the women X and Y. In a 6-seat circle, the seat opposite is three places away, so it belongs to the other category – a woman. The only woman not adjacent to P is Z, so Z sits opposite P. Key Learning Point: In a six-seat arrangement with men and women seated alternately, the person opposite a man will be a woman, and the person opposite a woman will be a man.", "MEDIUM"),
+        # Q19
+        ("An event occurs every year on the 15th of a month, quarterly (every 3 months), starting in March. In which month does the 5th event occur?",
+         ["December", "January", "February", "March"], 3,
+         "1st=March, 2nd=June, 3rd=September, 4th=December, 5th=March (following year). Key Learning Point: For a repeating annual schedule, the pattern cycles back to the starting month after the appropriate number of events.", "EASY"),
+        # Q20
+        ("A is 5 years older than B. B is 3 years younger than C. If C is 20 years old, find A’s age.",
+         ["20", "21", "22", "24"], 2,
+         "B = 20−3 = 17. A = 17+5 = 22. Key Learning Point: Resolve each relative-age clue one step at a time, starting from the age that is given directly.", "EASY"),
+        # Q21
+        ("A 9-floor building. X lives three floors above Y. Z lives two floors below Y. If X is on floor 8, find Z’s floor.",
+         ["2", "3", "4", "5"], 1,
+         "X=8, Y=X−3=5, Z=Y−2=3. Key Learning Point: Work backward from the one floor that is given directly, resolving each relationship in sequence.", "EASY"),
+        # Q22
+        ("Five students P, Q, R, S, T are ranked based on marks. P scored more than Q but less than R. S scored the least. T scored more than R. Who scored the second highest?",
+         ["P", "Q", "R", "T"], 2,
+         "Order: S < Q < P < R < T. Second highest = R. Key Learning Point: Chain all the clues into one ordered list, then read off the required rank directly.", "EASY"),
+        # Q23
+        ("Four people sit around a square table, one per side, facing the centre. A is opposite B. C is immediately to the right of A. Who sits immediately to the left of B?",
+         ["A", "C", "D", "Cannot be determined"], 1,
+         "Number the seats clockwise with A at seat 1; B (opposite A) = seat 3. C is immediately right of A; facing the centre, right = anticlockwise, so C = seat 4 and D = seat 2. Immediately left (clockwise) of B (seat 3) is seat 4 = C. Key Learning Point: A square-table arrangement works like a circular one – number the four seats clockwise and apply right = anticlockwise, left = clockwise for people facing the centre.", "MEDIUM"),
+        # Q24
+        ("Six tasks are scheduled on six days from today (Monday), one per day. Task X is scheduled 2 days after Task Y. If Task Y is on Wednesday, find the day for Task X.",
+         ["Thursday", "Friday", "Saturday", "Sunday"], 1,
+         "Y=Wednesday. X = Wednesday+2 = Friday. Key Learning Point: “n days after” a given day means counting forward n days from that specific day, not from the start of the schedule.", "EASY"),
+        # Q25
+        ("A sum of ₹1200 is divided among four persons such that each succeeding person gets half of what the preceding person gets. Find the share of the first person.",
+         ["600", "620", "640", "660"], 2,
+         "Shares: x, x/2, x/4, x/8. Sum = x(1+1/2+1/4+1/8) = 15x/8 = 1200 → x = 640. Key Learning Point: For a halving-distribution puzzle, sum the shares as a geometric series before equating to the total.", "MEDIUM"),
+    ]
+
+    # 25 Worked Examples (Tamil)
+    worked_ta = [
+        # Q1
+        ("P, Q, R, S என்ற நான்கு நண்பர்கள் ஒரு வரிசையில் அமர்ந்துள்ளனர். Q, P-க்கு உடனடியாக வலப்புறம் அமர்ந்துள்ளார். P இடது ஓரத்தில் இருந்தால், இடமிருந்து Q-இன் இடம் என்ன?",
+         ["1-ஆவது", "2-ஆவது", "3-ஆவது", "4-ஆவது"], 1,
+         "P 1-ஆம் இடத்தில் உள்ளார். P-க்கு உடனடியாக வலப்புறம் உள்ள Q 2-ஆம் இடத்தில் உள்ளார். முக்கியக் கற்றல் கருத்து: “உடனடியாக வலம்/இடம்” என்பது எப்போதும் அடுத்த இடத்தையே குறிக்கும்; அதற்கு அப்பால் எங்கோ என்பதல்ல."),
+        # Q2
+        ("திங்கள் முதல் தொடங்கும் ஒரு வாரத்தில், ஒரு பணி 3-ஆம் நாளில் செய்யப்பட்டால், அது எந்த நாள்?",
+         ["செவ்வாய்", "புதன்", "வியாழன்", "வெள்ளி"], 1,
+         "திங்கள்=1, செவ்வாய்=2, புதன்=3. முக்கியக் கற்றல் கருத்து: தொடக்க நாளை 0-ஆம் நாள் அல்ல, 1-ஆம் நாளாக எண்ணவும்."),
+        # Q3
+        ("ஒரு கட்டடத்தில் 5 தளங்கள் உள்ளன. 3-ஆம் தளம் நடுத்தளம் எனில், அதற்கு மேலே எத்தனை தளங்கள் உள்ளன?",
+         ["1", "2", "3", "4"], 1,
+         "4 மற்றும் 5 ஆகிய தளங்கள் 3-ஆம் தளத்துக்கு மேலே உள்ளன → 2 தளங்கள். முக்கியக் கற்றல் கருத்து: ஒரு குறிப்புப் புள்ளிக்கு மேலே அல்லது கீழே உள்ள தளங்களைத் தவறாக எண்ணாமல் இருக்க, எளிய தளப் பட்டியலை வரையவும்."),
+        # Q4
+        ("ராணி மீனாவைவிட மூத்தவள்; ஆனால் காவ்யாவைவிட இளையவள். மூவரில் மூத்தவர் யார்?",
+         ["ராணி", "மீனா", "காவ்யா", "தீர்மானிக்க இயலாது"], 2,
+         "வரிசை: மீனா < ராணி < காவ்யா. முக்கியக் கற்றல் கருத்து: விடையளிக்கும் முன் சார்புக் குறிப்புகளை (“மூத்தவர்,” “இளையவர்”) ஒரே வரிசைப் பட்டியலாக இணைக்கவும்."),
+        # Q5
+        ("1 முதல் 5 வரை எண்ணிடப்பட்ட ஐந்து பெட்டிகள், பெட்டி 1 அடியில் இருக்குமாறு எண் வரிசைப்படி அடுக்கப்பட்டுள்ளன. மேலே உள்ள பெட்டி எது?",
+         ["பெட்டி 1", "பெட்டி 3", "பெட்டி 4", "பெட்டி 5"], 3,
+         "பெட்டிகள் கீழிருந்து எண் வரிசையில் (1, 2, 3, 4, 5) உள்ளன; எனவே பெட்டி 5 மேலே உள்ளது. முக்கியக் கற்றல் கருத்து: ஓர் அடுக்கு வரிசையில், கடைசியாக வைக்கப்பட்ட பொருள் (வரிசைப்படி அடுக்கப்பட்டால், மிகப்பெரிய எண்) மேலே இருக்கும்."),
+        # Q6
+        ("A, B, C, D, E, F என்ற ஆறு பேர் ஒரு வட்ட மேசையைச் சுற்றி மையத்தை நோக்கி அமர்ந்துள்ளனர். B, A-க்கு உடனடியாக வலப்புறம் உள்ளார். C, A-க்கு வலமிருந்து இரண்டாவதாக உள்ளார். D, A-க்கு எதிரே உள்ளார். F, D-க்கு உடனடியாக வலப்புறம் உள்ளார். E, A-க்கு உடனடியாக இடப்புறம் உள்ளார். C-க்கு உடனடியாக இடப்புறம் அமர்ந்திருப்பவர் யார்?",
+         ["A", "B", "D", "F"], 1,
+         "A-ஐ 1-ஆம் இருக்கையாகக் கொண்டு, இருக்கைகளை 1 முதல் 6 வரை கடிகாரத் திசையில் எண்ணிடவும். மையத்தை நோக்கி அமர்ந்திருப்போருக்கு வலம் = எதிர்க்கடிகாரத் திசை, இடம் = கடிகாரத் திசை. B (A-க்கு உடனடி வலம்) = இருக்கை 6; C (A-க்கு வலமிருந்து இரண்டாவது) = இருக்கை 5; D (A-க்கு எதிரே) = இருக்கை 4; F (D-க்கு உடனடி வலம்) = இருக்கை 3; E (A-க்கு உடனடி இடம்) = இருக்கை 2. C-க்கு (இருக்கை 5) உடனடியாக இடப்புறம் (கடிகாரத் திசை) இருக்கை 6 = B. முக்கியக் கற்றல் கருத்து: மையத்தை நோக்கி அமர்ந்திருப்போருக்கு, உடனடி வலம் = எதிர்க்கடிகாரத் திசை அண்டையர், உடனடி இடம் = கடிகாரத் திசை அண்டையர்; விடையளிக்கும் முன் இருக்கைகளை எண்ணிடவும்."),
+        # Q7
+        ("7 தளக் கட்டடம் (1=அடி, 7=மேல்). P 6-ஆம் தளத்தில் வசிக்கிறார். Q, P-க்கு மூன்று தளங்கள் கீழே வசிக்கிறார். R, Q-க்கு உடனடியாக மேலே வசிக்கிறார். R எந்தத் தளத்தில் வசிக்கிறார்?",
+         ["3", "4", "5", "6"], 1,
+         "Q = 6−3 = 3. R = Q+1 = 4. முக்கியக் கற்றல் கருத்து: ஒவ்வொரு தளத் தொடர்பையும் ஒவ்வொரு படியாகத் தீர்த்து, முந்தைய விடையை அடுத்த குறிப்புக்கான குறிப்புப் புள்ளியாகப் பயன்படுத்தவும்."),
+        # Q8
+        ("திங்கள் முதல் தொடங்கும் ஒரு வாரத்தின் 4-ஆம் நாளில் ஒரு கூட்டம் திட்டமிடப்பட்டுள்ளது. அது 3 நாட்கள் ஒத்திவைக்கப்பட்டால், இப்போது எந்த நாளில் நடைபெறும்?",
+         ["சனி", "ஞாயிறு", "திங்கள்", "செவ்வாய்"], 1,
+         "திங்கள் முதல் 4-ஆம் நாள் = வியாழன். 3 நாட்கள் ஒத்திவைப்பு: வியாழன்→வெள்ளி→சனி→ஞாயிறு. முக்கியக் கற்றல் கருத்து: முதலில் அசல் நாளைக் கண்டறிந்து, பின்னர் அந்நாளிலிருந்து ஒத்திவைப்பைத் தனியாக எண்ணவும்."),
+        # Q9
+        ("ஜனவரியிலிருந்து தொடங்கி, இரண்டு மாதங்களுக்கு ஒருமுறை ஒரு நிகழ்வு நடைபெறுகிறது. 4-ஆவது நிகழ்வு எந்த மாதத்தில் நடைபெறும்?",
+         ["மே", "ஜூன்", "ஜூலை", "ஆகஸ்ட்"], 2,
+         "1-ஆவது=ஜனவரி, 2-ஆவது=மார்ச், 3-ஆவது=மே, 4-ஆவது=ஜூலை. முக்கியக் கற்றல் கருத்து: “ஒவ்வொரு n-ஆவது மாதமும்” வகைக் கணக்குகளில், ஒரே படியில் கணக்கிட முயலாமல், ஒவ்வொரு நிகழ்வின் மாதத்தையும் ஒவ்வொன்றாகப் பட்டியலிடவும்."),
+        # Q10
+        ("A மற்றும் B-இன் வயதுகளின் கூடுதல் 45. A, B-ஐவிட இருமடங்கு வயதுடையவர். A-இன் வயதைக் காண்க.",
+         ["25", "28", "30", "32"], 2,
+         "2B+B=45 → 3B=45 → B=15. A=2B=30. முக்கியக் கற்றல் கருத்து: தீர்க்கும் முன், தெரியாத அனைத்து மதிப்புகளையும் ஒரே மாறியின் அடிப்படையில் வெளிப்படுத்தவும்."),
+        # Q11
+        ("P, Q, R, S, T என்ற ஐந்து மாணவர்களில்: P, Q-ஐவிட அதிகம் ஆனால் R-ஐவிடக் குறைவாக மதிப்பெண் பெற்றார். S, R-ஐவிட அதிகம் ஆனால் T-ஐவிடக் குறைவாக மதிப்பெண் பெற்றார். அதிக மதிப்பெண் பெற்றவர் யார்?",
+         ["P", "R", "S", "T"], 3,
+         "வரிசை: Q < P < R < S < T. முக்கியக் கற்றல் கருத்து: உச்சங்களை (அதிகம்/குறைவு) கண்டறிய, அனைத்துச் சார்புக் குறிப்புகளையும் ஒரே வரிசைப் பட்டியலாக இணைக்கவும்."),
+        # Q12
+        ("20 ஆப்பிள்கள் 4 குழந்தைகளுக்கு, ஒவ்வொருவரும் முந்தையவரைவிட 2 ஆப்பிள்கள் அதிகம் பெறுமாறு பகிரப்படுகின்றன. மிகக் குறைவாகப் பெறும் குழந்தை பெறும் ஆப்பிள்களின் எண்ணிக்கையைக் காண்க.",
+         ["2", "3", "4", "5"], 0,
+         "மிகக் குறைவானது = x என்க. பங்குகள்: x, x+2, x+4, x+6. கூடுதல் = 4x+12 = 20 → x=2. முக்கியக் கற்றல் கருத்து: ஒவ்வொரு பங்கையும் முதல் (மிகச் சிறிய) பங்கின் அடிப்படையில் வெளிப்படுத்தி, கூட்டி, மொத்தத்துக்குச் சமப்படுத்தவும்."),
+        # Q13
+        ("6 தளக் கட்டடம். M, N வசிக்கும் தளத்துக்கு ஒரு தளம் மேலே உள்ளார். O, M-க்கு இரண்டு தளங்கள் கீழே உள்ளார். N 2-ஆம் தளத்தில் உள்ளார். O-இன் தளத்தைக் காண்க.",
+         ["1", "2", "3", "4"], 0,
+         "N=2, M=N+1=3, O=M−2=1. முக்கியக் கற்றல் கருத்து: குறிப்புகள் எழுதப்பட்ட வரிசையில் அல்லாமல், அவை ஒன்றையொன்று சார்ந்து அமையும் வரிசையில் தளத் தொடர்புகளைத் தீர்க்கவும்."),
+        # Q14
+        ("திங்கள் முதல் தொடர்ச்சியான நாட்களில், நாளொன்றுக்கு ஒன்றாக ஐந்து கூட்டங்கள் திட்டமிடப்பட்டுள்ளன. சந்தைப்படுத்தல் கூட்டம் 3-ஆம் நாளில் உள்ளது. அது எந்த நாள்?",
+         ["செவ்வாய்", "புதன்", "வியாழன்", "வெள்ளி"], 1,
+         "திங்கள்=1, செவ்வாய்=2, புதன்=3. முக்கியக் கற்றல் கருத்து: “… முதல் n-ஆம் நாள்” வினாக்களில், தொடக்க நாளே 1-ஆம் நாள் ஆகும்."),
+        # Q15
+        ("ஒரு தந்தை தன் மகனைவிட நான்கு மடங்கு வயதுடையவர். 5 ஆண்டுகளுக்குப் பின், தந்தை மகனைவிட மூன்று மடங்கு வயதுடையவராக இருப்பார். மகனின் தற்போதைய வயதைக் காண்க.",
+         ["8", "9", "10", "12"], 2,
+         "F=4S. F+5=3(S+5) → 4S+5=3S+15 → S=10. முக்கியக் கற்றல் கருத்து: “n ஆண்டுகளுக்குப் பின்” என்ற நிபந்தனையைக் கொண்டு சமன்பாடு அமைக்கவும்; சமப்படுத்தும் முன் இரு வயதுகளுடனும் n-ஐக் கூட்டவும்."),
+        # Q16
+        ("இடமிருந்து வலமாக 1 முதல் 5 வரை எண்ணிடப்பட்ட ஐந்து வீடுகளின் வரிசையில், சிவப்பு, பச்சை, நீல வீடுகள் அடுத்தடுத்து உள்ளன; பச்சை வீடு சிவப்புக்கும் நீலத்துக்கும் நேர் இடையில் உள்ளது. சிவப்பு வீடு நீல வீட்டுக்கு இடப்புறம் உள்ளது. சிவப்பு வீடு வீடு 1 எனில், நீல வீட்டின் இடத்தைக் காண்க.",
+         ["2", "3", "4", "5"], 1,
+         "மூன்று வீடுகளும் அடுத்தடுத்து, பச்சை நடுவில்: சிவப்பு = 1, பச்சை = 2, நீலம் = 3. முக்கியக் கற்றல் கருத்து: இடங்கள் அடுத்தடுத்தவை எனக் கூறப்பட்டால் மட்டுமே “இடையில்” என்ற குறிப்பு அமைப்பை நிர்ணயிக்கிறது; அக்குறிப்பு உறுதியாக எதைத் தருகிறது என்பதைத் துல்லியமாகப் படிக்கவும்."),
+        # Q17
+        ("மூன்று நண்பர்கள் ₹900-ஐ, இரண்டாமவர் முதலாமவரைவிட இருமடங்கும், மூன்றாமவர் இரண்டாமவரைவிட மும்மடங்கும் பெறுமாறு பகிர்ந்துகொள்கின்றனர். முதல் நண்பரின் பங்கைக் காண்க.",
+         ["80", "90", "100", "120"], 2,
+         "முதலாமவர்=x, இரண்டாமவர்=2x, மூன்றாமவர்=6x என்க. கூடுதல்=9x=900 → x=100. முக்கியக் கற்றல் கருத்து: ஒவ்வொருவரின் பங்கையும் மிகச் சிறிய பங்கின் மடங்காக வெளிப்படுத்தி, கூட்டி, மொத்தத்துக்குச் சமப்படுத்தவும்."),
+        # Q18
+        ("ஒரு வட்ட மேசையைச் சுற்றி ஆறு பேர் – மூன்று ஆண்கள் (P, Q, R), மூன்று பெண்கள் (X, Y, Z) – மாறி மாறி அமர்ந்துள்ளனர். P, X-க்கும் Y-க்கும் இடையில் உள்ளார். P-க்கு எதிரே அமர்ந்திருப்பவர் யார்?",
+         ["Q", "R", "X", "Z"], 3,
+         "இருக்கைகள் ஆண்–பெண் என மாறி மாறி வருகின்றன. P-இன் இரு அண்டையர்களும் பெண்கள் X, Y. 6 இருக்கை வட்டத்தில், எதிரே உள்ள இருக்கை மூன்று இடங்கள் தள்ளி உள்ளது; எனவே அது மற்ற வகையைச் சேர்ந்தது – ஒரு பெண். P-க்கு அருகில் இல்லாத ஒரே பெண் Z; எனவே Z, P-க்கு எதிரே அமர்ந்துள்ளார். முக்கியக் கற்றல் கருத்து: ஆண்களும் பெண்களும் மாறி மாறி அமரும் ஆறு இருக்கை அமைப்பில், ஓர் ஆணுக்கு எதிரே ஒரு பெண்ணும், ஒரு பெண்ணுக்கு எதிரே ஓர் ஆணும் அமர்ந்திருப்பர்."),
+        # Q19
+        ("மார்ச் மாதத்திலிருந்து தொடங்கி, ஒவ்வோர் ஆண்டும் காலாண்டுக்கு ஒருமுறை (3 மாதங்களுக்கு ஒருமுறை) ஒரு மாதத்தின் 15-ஆம் தேதி ஒரு நிகழ்வு நடைபெறுகிறது. 5-ஆவது நிகழ்வு எந்த மாதத்தில் நடைபெறும்?",
+         ["டிசம்பர்", "ஜனவரி", "பிப்ரவரி", "மார்ச்"], 3,
+         "1-ஆவது=மார்ச், 2-ஆவது=ஜூன், 3-ஆவது=செப்டம்பர், 4-ஆவது=டிசம்பர், 5-ஆவது=மார்ச் (அடுத்த ஆண்டு). முக்கியக் கற்றல் கருத்து: மீண்டும் வரும் ஆண்டு அட்டவணையில், உரிய எண்ணிக்கையிலான நிகழ்வுகளுக்குப் பின் அமைப்பு தொடக்க மாதத்துக்குத் திரும்புகிறது."),
+        # Q20
+        ("A, B-ஐவிட 5 வயது மூத்தவர். B, C-ஐவிட 3 வயது இளையவர். C-இன் வயது 20 எனில், A-இன் வயதைக் காண்க.",
+         ["20", "21", "22", "24"], 2,
+         "B = 20−3 = 17. A = 17+5 = 22. முக்கியக் கற்றல் கருத்து: நேரடியாகக் கொடுக்கப்பட்ட வயதிலிருந்து தொடங்கி, ஒவ்வொரு சார்பு வயதுக் குறிப்பையும் ஒவ்வொரு படியாகத் தீர்க்கவும்."),
+        # Q21
+        ("9 தளக் கட்டடம். X, Y-க்கு மூன்று தளங்கள் மேலே வசிக்கிறார். Z, Y-க்கு இரண்டு தளங்கள் கீழே வசிக்கிறார். X 8-ஆம் தளத்தில் இருந்தால், Z-இன் தளத்தைக் காண்க.",
+         ["2", "3", "4", "5"], 1,
+         "X=8, Y=X−3=5, Z=Y−2=3. முக்கியக் கற்றல் கருத்து: நேரடியாகக் கொடுக்கப்பட்ட ஒரே தளத்திலிருந்து பின்னோக்கிச் செயல்பட்டு, ஒவ்வொரு தொடர்பையும் வரிசையாகத் தீர்க்கவும்."),
+        # Q22
+        ("P, Q, R, S, T என்ற ஐந்து மாணவர்கள் மதிப்பெண் அடிப்படையில் தரவரிசைப்படுத்தப்படுகின்றனர். P, Q-ஐவிட அதிகம் ஆனால் R-ஐவிடக் குறைவாகப் பெற்றார். S மிகக் குறைவாகப் பெற்றார். T, R-ஐவிட அதிகம் பெற்றார். இரண்டாவது அதிக மதிப்பெண் பெற்றவர் யார்?",
+         ["P", "Q", "R", "T"], 2,
+         "வரிசை: S < Q < P < R < T. இரண்டாவது அதிகம் = R. முக்கியக் கற்றல் கருத்து: அனைத்துக் குறிப்புகளையும் ஒரே வரிசைப் பட்டியலாக இணைத்து, தேவையான தரவரிசையை நேரடியாகப் படிக்கவும்."),
+        # Q23
+        ("ஒரு சதுர மேசையைச் சுற்றி, பக்கத்துக்கு ஒருவராக, நான்கு பேர் மையத்தை நோக்கி அமர்ந்துள்ளனர். A, B-க்கு எதிரே உள்ளார். C, A-க்கு உடனடியாக வலப்புறம் உள்ளார். B-க்கு உடனடியாக இடப்புறம் அமர்ந்திருப்பவர் யார்?",
+         ["A", "C", "D", "தீர்மானிக்க இயலாது"], 1,
+         "A-ஐ இருக்கை 1 ஆகக்கொண்டு இருக்கைகளைக் கடிகாரத் திசையில் எண்ணிடவும்; B (A-க்கு எதிரே) = இருக்கை 3. C, A-க்கு உடனடியாக வலப்புறம்; மையத்தை நோக்கியிருப்பதால் வலம் = எதிர்க்கடிகாரத் திசை; எனவே C = இருக்கை 4, D = இருக்கை 2. B-க்கு (இருக்கை 3) உடனடியாக இடப்புறம் (கடிகாரத் திசை) இருக்கை 4 = C. முக்கியக் கற்றல் கருத்து: சதுர மேசை அமைப்பும் வட்ட அமைப்பைப் போன்றதே – நான்கு இருக்கைகளையும் கடிகாரத் திசையில் எண்ணிட்டு, மையத்தை நோக்கியிருப்போருக்கு வலம் = எதிர்க்கடிகாரம், இடம் = கடிகாரம் எனப் பயன்படுத்தவும்."),
+        # Q24
+        ("இன்று (திங்கள்) முதல் ஆறு நாட்களில், நாளொன்றுக்கு ஒன்றாக ஆறு பணிகள் திட்டமிடப்பட்டுள்ளன. பணி X, பணி Y-க்கு 2 நாட்கள் பின் திட்டமிடப்பட்டுள்ளது. பணி Y புதன்கிழமை எனில், பணி X-க்கான நாளைக் காண்க.",
+         ["வியாழன்", "வெள்ளி", "சனி", "ஞாயிறு"], 1,
+         "Y=புதன். X = புதன்+2 = வெள்ளி. முக்கியக் கற்றல் கருத்து: ஒரு நாளுக்கு “n நாட்கள் பின்” என்பது அட்டவணையின் தொடக்கத்திலிருந்து அல்லாமல், அந்தக் குறிப்பிட்ட நாளிலிருந்து n நாட்கள் முன்னோக்கி எண்ணுவதாகும்."),
+        # Q25
+        ("1200 ₹ என்ற தொகை நான்கு பேருக்கு, ஒவ்வொருவரும் முந்தையவர் பெறுவதில் பாதியைப் பெறுமாறு பிரிக்கப்படுகிறது. முதலாமவரின் பங்கைக் காண்க.",
+         ["600", "620", "640", "660"], 2,
+         "பங்குகள்: x, x/2, x/4, x/8. கூடுதல் = x(1+1/2+1/4+1/8) = 15x/8 = 1200 → x = 640. முக்கியக் கற்றல் கருத்து: பாதியாக்கும் பகிர்வுப் புதிரில், மொத்தத்துக்குச் சமப்படுத்தும் முன் பங்குகளைப் பெருக்குத் தொடராகக் கூட்டவும்."),
+    ]
+
+    # 30 Independent Practice (English)
+    indep_en = [
+        # Q1
+        ("Five friends sit in a row. Q is immediately to the right of P. If P is at the leftmost end, what is Q’s position from the left?",
+         ["1st", "2nd", "3rd", "4th"], 1,
+         "P is at position 1. Q is at position 2. Key Learning Point: “Immediately right” always means the very next position.", "EASY"),
+        # Q2
+        ("In a week starting from Sunday, if a task is done on the 5th day, which day is it?",
+         ["Wednesday", "Thursday", "Friday", "Saturday"], 1,
+         "Sunday=1, Monday=2, Tuesday=3, Wednesday=4, Thursday=5. Key Learning Point: Count the starting day as day 1.", "EASY"),
+        # Q3
+        ("A building has 6 floors. If floor 4 is given, how many floors are above it?",
+         ["1", "2", "3", "4"], 1,
+         "Floors 5 and 6 are above floor 4 → 2 floors. Key Learning Point: Sketch a simple floor list to count floors above or below accurately.", "EASY"),
+        # Q4
+        ("Meena is younger than Kavya but older than Priya. Who is the youngest?",
+         ["Meena", "Kavya", "Priya", "Cannot be determined"], 2,
+         "Order: Priya < Meena < Kavya. Key Learning Point: Chain the relative clues into a single ordered list.", "EASY"),
+        # Q5
+        ("Four boxes numbered 1 to 4 are stacked in numerical order, with Box 1 at the bottom. Which box is at the top?",
+         ["Box 1", "Box 2", "Box 3", "Box 4"], 3,
+         "The boxes are in numerical order from the bottom (1, 2, 3, 4), so Box 4 is at the top. Key Learning Point: A numbered stack has a definite top only when the order of stacking is stated.", "EASY"),
+        # Q6
+        ("Four children share 24 sweets. The first child gets half of the sweets, and the other three share the rest equally. How many sweets does each of the other three get?",
+         ["3", "4", "6", "8"], 1,
+         "First child: 24 ÷ 2 = 12. Remaining: 24 − 12 = 12. Each of the other three: 12 ÷ 3 = 4. Key Learning Point: Work out the fixed share first, then divide what remains.", "EASY"),
+        # Q7
+        ("Six people sit around a circular table facing the centre. Q is immediately to the right of P. R is second to the right of P. S is opposite P. U is immediately to the right of S. T is immediately to the left of P. Who sits immediately to the left of R?",
+         ["P", "Q", "S", "T"], 1,
+         "Number the seats 1 to 6 clockwise, with P at seat 1 (right = anticlockwise, left = clockwise). Q (immediate right of P) = seat 6; R (second to the right) = seat 5; S (opposite P) = seat 4; U (immediate right of S) = seat 3; T (immediate left of P) = seat 2. Immediately left (clockwise) of R (seat 5) is seat 6 = Q. Key Learning Point: For people facing the centre, count “right” anticlockwise and “left” clockwise from the numbered seats.", "MEDIUM"),
+        # Q8
+        ("A 7-floor building. K lives on floor 5. L lives two floors below K. M lives immediately above L. On which floor does M live?",
+         ["3", "4", "5", "6"], 1,
+         "K=5, L=5−2=3, M=L+1=4. Key Learning Point: Resolve each clue in sequence, using the previous result as the next reference point.", "EASY"),
+        # Q9
+        ("A meeting is scheduled on the 5th day of a week starting from Tuesday. If postponed by 4 days, which day will it now be held?",
+         ["Tuesday", "Wednesday", "Thursday", "Friday"], 1,
+         "5th day from Tuesday = Saturday. Postponed by 4 days: Saturday→Sunday→Monday→Tuesday→Wednesday. Key Learning Point: Find the original day first, then count the postponement from that specific day.", "EASY"),
+        # Q10
+        ("An event is held every third month, starting from February. Which month is the 4th event held in?",
+         ["September", "October", "November", "December"], 2,
+         "1st=February, 2nd=May, 3rd=August, 4th=November. Key Learning Point: List out each event’s month one at a time for “every nth month” problems.", "EASY"),
+        # Q11
+        ("The sum of the ages of X and Y is 60. X is thrice as old as Y. Find X’s age.",
+         ["40", "42", "45", "48"], 2,
+         "3Y+Y=60 → 4Y=60 → Y=15. X=3Y=45. Key Learning Point: Express both ages in terms of one variable before solving.", "EASY"),
+        # Q12
+        ("Among five students A, B, C, D, E: A scored higher than B but lower than C. D scored higher than C but lower than E. Who scored the lowest?",
+         ["A", "B", "D", "E"], 1,
+         "Order: B < A < C < D < E. Key Learning Point: Chain all relative clues into a single ordered list to find the extremes.", "EASY"),
+        # Q13
+        ("24 pens are distributed among 4 students such that each student gets 2 more pens than the previous one. Find the number received by the student who gets the fewest.",
+         ["2", "3", "4", "5"], 1,
+         "Let fewest=x. Shares: x, x+2, x+4, x+6. Sum=4x+12=24 → x=3. Key Learning Point: Sum all shares in terms of the smallest one, then equate to the given total.", "EASY"),
+        # Q14
+        ("Five people A, B, C, D, and E live on floors 1 to 5 (1 = bottom), one per floor. B lives on floor 3. A lives above B but not on the top floor. C lives immediately below B. D lives on the top floor. Who lives on floor 1?",
+         ["A", "C", "D", "E"], 3,
+         "B = 3, C = 2 (immediately below B), D = 5 (top floor). A is above B but not on top, so A = 4. The only floor left is 1, so E lives on floor 1. Key Learning Point: Fix the definite floors first, then use “above/below” and “not” clues to eliminate the rest.", "MEDIUM"),
+        # Q15
+        ("If yesterday was Saturday, what day will it be the day after tomorrow?",
+         ["Monday", "Tuesday", "Wednesday", "Thursday"], 1,
+         "Yesterday = Saturday, so today = Sunday. Day after tomorrow = Sunday + 2 = Tuesday. Key Learning Point: Always convert “yesterday/tomorrow” clues to today’s day first.", "EASY"),
+        # Q16
+        ("A mother is five times as old as her daughter. After 10 years, the mother will be three times as old as the daughter. Find the daughter’s present age.",
+         ["8", "10", "12", "15"], 1,
+         "M=5D. M+10=3(D+10) → 5D+10=3D+30 → D=10. Key Learning Point: Apply +n to both ages before equating in “after n years” problems.", "EASY"),
+        # Q17
+        ("In a row of five houses numbered 1 to 5, the white, blue, and yellow houses are consecutive, with the blue house immediately between the white and yellow houses. The white house is to the left of the yellow house. If the white house is House 2, find the position of the yellow house.",
+         ["3", "4", "5", "6"], 1,
+         "The three houses are consecutive with blue in the middle: White = 2, Blue = 3, Yellow = 4. Key Learning Point: Use a “between” clue to fix positions only when the houses are stated to be consecutive.", "EASY"),
+        # Q18
+        ("Three friends share ₹1800 such that the second gets twice the first, and the third gets thrice the second. Find the first friend’s share.",
+         ["150", "180", "200", "220"], 2,
+         "Let first=x, second=2x, third=6x. Sum=9x=1800 → x=200. Key Learning Point: Express every share as a multiple of the smallest, sum them, and equate to the total.", "EASY"),
+        # Q19
+        ("Six people sit around a circular table – three men (D, E, F) and three women (X, Y, Z) – alternately. D is between X and Z. Who sits opposite D?",
+         ["E", "F", "X", "Y"], 3,
+         "Seats alternate man–woman. D’s neighbours are the women X and Z. The seat opposite D is three places away, so it belongs to a woman. The only woman not adjacent to D is Y, so Y sits opposite D. Key Learning Point: In a six-seat arrangement with men and women seated alternately, the person opposite a man will be a woman, and the person opposite a woman will be a man.", "MEDIUM"),
+        # Q20
+        ("An event occurs every year, quarterly (every 3 months), starting in April. In which month does the 5th event occur?",
+         ["January", "February", "March", "April"], 3,
+         "1st=April, 2nd=July, 3rd=October, 4th=January (next year), 5th=April (next year). Key Learning Point: A quarterly annual schedule returns to the starting month after four events.", "EASY"),
+        # Q21
+        ("A is 7 years older than B. B is 4 years younger than C. If C is 25 years old, find A’s age.",
+         ["25", "26", "28", "30"], 2,
+         "B=25−4=21. A=21+7=28. Key Learning Point: Resolve the age given directly first, then work outward through the other relative clues.", "EASY"),
+        # Q22
+        ("A 10-floor building. X lives four floors above Y. Z lives three floors below Y. If X is on floor 9, find Z’s floor.",
+         ["1", "2", "3", "4"], 1,
+         "X=9, Y=X−4=5, Z=Y−3=2. Key Learning Point: Work backward from the directly given floor, resolving each relationship in sequence.", "EASY"),
+        # Q23
+        ("Five students P, Q, R, S, T are ranked. P scored more than Q but less than R. S scored the least. T scored more than R. Who scored the second lowest?",
+         ["P", "Q", "R", "T"], 1,
+         "Order: S < Q < P < R < T. Second lowest = Q. Key Learning Point: Chain all clues into one ordered list, then read off the required rank.", "EASY"),
+        # Q24
+        ("Four people sit around a square table, one per side, facing the centre. W is opposite X. Y is immediately to the right of W. Who sits immediately to the left of X?",
+         ["W", "Y", "Z", "Cannot be determined"], 1,
+         "Number the seats clockwise with W at seat 1; X (opposite W) = seat 3. Y is immediately right of W (anticlockwise), so Y = seat 4 and Z = seat 2. Immediately left (clockwise) of X (seat 3) is seat 4 = Y. Key Learning Point: Number the square table’s four seats clockwise, then apply right = anticlockwise and left = clockwise.", "MEDIUM"),
+        # Q25
+        ("Seven tasks are scheduled on seven days from today (Sunday), one per day. Task M is scheduled 3 days after Task N. If Task N is on Monday, find the day for Task M.",
+         ["Wednesday", "Thursday", "Friday", "Saturday"], 1,
+         "N=Monday. M = Monday+3 = Thursday. Key Learning Point: Count forward from the specific day given for the reference task, not from the start of the week.", "EASY"),
+        # Q26
+        ("A sum of ₹1500 is divided among four persons such that each succeeding person gets half of what the preceding person gets. Find the share of the first person.",
+         ["700", "750", "800", "850"], 2,
+         "15x/8 = 1500 → x = 800. Key Learning Point: Sum the shares as a geometric series (halving pattern) before equating to the total.", "MEDIUM"),
+        # Q27
+        ("Five friends P, Q, R, S, and T sit around a circular table facing the centre. Q is to the immediate left of P. R is to the immediate right of P. S is not adjacent to Q. Who sits to the immediate left of Q?",
+         ["R", "S", "T", "P"], 2,
+         "Number the seats clockwise with P at seat 1 (left = clockwise, right = anticlockwise). Q = seat 2, R = seat 5. S cannot be at seat 3 (next to Q), so S = seat 4 and T = seat 3. Immediately left (clockwise) of Q (seat 2) is seat 3 = T. Key Learning Point: Combine a “not adjacent” clue with the fixed seats to eliminate the impossible positions.", "MEDIUM"),
+        # Q28
+        ("In a 6-storey building (floor 1 = bottom), one person lives on each floor. M lives on an even floor. N lives immediately below M. O lives on the top floor. P lives on floor 1. Q lives above M. Who lives on floor 2?",
+         ["N", "Q", "R", "M"], 2,
+         "O = 6 and P = 1. M is even, so M = 2 or 4. If M = 2, N would be on floor 1, which is P’s – impossible. So M = 4, N = 3. Q is above M, so Q = 5. The remaining person, R, lives on floor 2. Key Learning Point: Test each possible value of a restricted clue (here, “even floor”) and reject the one that creates a conflict.", "MEDIUM"),
+        # Q29
+        ("In a class of 30 students, Asha’s rank is 9th from the top. Babu is 5 ranks below Asha. What is Babu’s rank from the bottom?",
+         ["15", "16", "17", "18"], 2,
+         "Babu’s rank from the top = 9 + 5 = 14. Rank from the bottom = 30 − 14 + 1 = 17. Key Learning Point: Find the position from one end first, then convert it using Total − position + 1.", "EASY"),
+        # Q30
+        ("₹950 is divided among X, Y, and Z so that X gets ₹100 more than Y, and Y gets ₹50 more than Z. Find X’s share.",
+         ["₹350", "₹400", "₹450", "₹300"], 1,
+         "Let Z = x. Then Y = x + 50 and X = x + 150. x + (x + 50) + (x + 150) = 950 → 3x = 750 → x = 250. X = 250 + 150 = ₹400. Key Learning Point: Express every share in terms of the smallest one when the clues give differences rather than ratios.", "EASY"),
+    ]
+
+    # 30 Independent Practice (Tamil)
+    indep_ta = [
+        # Q1
+        ("ஐந்து நண்பர்கள் ஒரு வரிசையில் அமர்ந்துள்ளனர். Q, P-க்கு உடனடியாக வலப்புறம் உள்ளார். P இடது ஓரத்தில் இருந்தால், இடமிருந்து Q-இன் இடம் என்ன?",
+         ["1-ஆவது", "2-ஆவது", "3-ஆவது", "4-ஆவது"], 1,
+         "P 1-ஆம் இடத்தில் உள்ளார். Q 2-ஆம் இடத்தில் உள்ளார். முக்கியக் கற்றல் கருத்து: “உடனடியாக வலம்” என்பது எப்போதும் அடுத்த இடத்தையே குறிக்கும்."),
+        # Q2
+        ("ஞாயிறு முதல் தொடங்கும் ஒரு வாரத்தில், ஒரு பணி 5-ஆம் நாளில் செய்யப்பட்டால், அது எந்த நாள்?",
+         ["புதன்", "வியாழன்", "வெள்ளி", "சனி"], 1,
+         "ஞாயிறு=1, திங்கள்=2, செவ்வாய்=3, புதன்=4, வியாழன்=5. முக்கியக் கற்றல் கருத்து: தொடக்க நாளை 1-ஆம் நாளாக எண்ணவும்."),
+        # Q3
+        ("ஒரு கட்டடத்தில் 6 தளங்கள் உள்ளன. 4-ஆம் தளம் கொடுக்கப்பட்டால், அதற்கு மேலே எத்தனை தளங்கள் உள்ளன?",
+         ["1", "2", "3", "4"], 1,
+         "5 மற்றும் 6 ஆகிய தளங்கள் 4-ஆம் தளத்துக்கு மேலே உள்ளன → 2 தளங்கள். முக்கியக் கற்றல் கருத்து: மேலே அல்லது கீழே உள்ள தளங்களைத் துல்லியமாக எண்ண, எளிய தளப் பட்டியலை வரையவும்."),
+        # Q4
+        ("மீனா காவ்யாவைவிட இளையவள்; ஆனால் பிரியாவைவிட மூத்தவள். மூவரில் இளையவர் யார்?",
+         ["மீனா", "காவ்யா", "பிரியா", "தீர்மானிக்க இயலாது"], 2,
+         "வரிசை: பிரியா < மீனா < காவ்யா. முக்கியக் கற்றல் கருத்து: சார்புக் குறிப்புகளை ஒரே வரிசைப் பட்டியலாக இணைக்கவும்."),
+        # Q5
+        ("1 முதல் 4 வரை எண்ணிடப்பட்ட நான்கு பெட்டிகள், பெட்டி 1 அடியில் இருக்குமாறு எண் வரிசைப்படி அடுக்கப்பட்டுள்ளன. மேலே உள்ள பெட்டி எது?",
+         ["பெட்டி 1", "பெட்டி 2", "பெட்டி 3", "பெட்டி 4"], 3,
+         "பெட்டிகள் கீழிருந்து எண் வரிசையில் (1, 2, 3, 4) உள்ளன; எனவே பெட்டி 4 மேலே உள்ளது. முக்கியக் கற்றல் கருத்து: அடுக்கும் வரிசை குறிப்பிடப்பட்டால் மட்டுமே எண்ணிடப்பட்ட அடுக்கின் மேல்பகுதி உறுதியாகும்."),
+        # Q6
+        ("நான்கு குழந்தைகள் 24 இனிப்புகளைப் பகிர்ந்துகொள்கின்றனர். முதல் குழந்தை இனிப்புகளில் பாதியைப் பெறுகிறது; மற்ற மூவரும் மீதியைச் சமமாகப் பகிர்ந்துகொள்கின்றனர். மற்ற மூவரில் ஒவ்வொருவரும் எத்தனை இனிப்புகள் பெறுவர்?",
+         ["3", "4", "6", "8"], 1,
+         "முதல் குழந்தை: 24 ÷ 2 = 12. மீதம்: 24 − 12 = 12. மற்ற மூவரில் ஒவ்வொருவரும்: 12 ÷ 3 = 4. முக்கியக் கற்றல் கருத்து: முதலில் நிலையான பங்கைக் கணக்கிட்டு, பின்னர் மீதியைப் பிரிக்கவும்."),
+        # Q7
+        ("ஆறு பேர் ஒரு வட்ட மேசையைச் சுற்றி மையத்தை நோக்கி அமர்ந்துள்ளனர். Q, P-க்கு உடனடியாக வலப்புறம் உள்ளார். R, P-க்கு வலமிருந்து இரண்டாவதாக உள்ளார். S, P-க்கு எதிரே உள்ளார். U, S-க்கு உடனடியாக வலப்புறம் உள்ளார். T, P-க்கு உடனடியாக இடப்புறம் உள்ளார். R-க்கு உடனடியாக இடப்புறம் அமர்ந்திருப்பவர் யார்?",
+         ["P", "Q", "S", "T"], 1,
+         "P-ஐ இருக்கை 1 ஆகக் கொண்டு, இருக்கைகளை 1 முதல் 6 வரை கடிகாரத் திசையில் எண்ணிடவும் (வலம் = எதிர்க்கடிகாரம், இடம் = கடிகாரம்). Q (P-க்கு உடனடி வலம்) = இருக்கை 6; R (வலமிருந்து இரண்டாவது) = இருக்கை 5; S (P-க்கு எதிரே) = இருக்கை 4; U (S-க்கு உடனடி வலம்) = இருக்கை 3; T (P-க்கு உடனடி இடம்) = இருக்கை 2. R-க்கு (இருக்கை 5) உடனடியாக இடப்புறம் (கடிகாரத் திசை) இருக்கை 6 = Q. முக்கியக் கற்றல் கருத்து: மையத்தை நோக்கி அமர்ந்திருப்போருக்கு, எண்ணிடப்பட்ட இருக்கைகளிலிருந்து “வலம்” என்பதை எதிர்க்கடிகாரத் திசையிலும், “இடம்” என்பதைக் கடிகாரத் திசையிலும் எண்ணவும்."),
+        # Q8
+        ("7 தளக் கட்டடம். K 5-ஆம் தளத்தில் வசிக்கிறார். L, K-க்கு இரண்டு தளங்கள் கீழே வசிக்கிறார். M, L-க்கு உடனடியாக மேலே வசிக்கிறார். M எந்தத் தளத்தில் வசிக்கிறார்?",
+         ["3", "4", "5", "6"], 1,
+         "K=5, L=5−2=3, M=L+1=4. முக்கியக் கற்றல் கருத்து: முந்தைய விடையை அடுத்த குறிப்புப் புள்ளியாகப் பயன்படுத்தி, ஒவ்வொரு குறிப்பையும் வரிசையாகத் தீர்க்கவும்."),
+        # Q9
+        ("செவ்வாய் முதல் தொடங்கும் ஒரு வாரத்தின் 5-ஆம் நாளில் ஒரு கூட்டம் திட்டமிடப்பட்டுள்ளது. 4 நாட்கள் ஒத்திவைக்கப்பட்டால், இப்போது எந்த நாளில் நடைபெறும்?",
+         ["செவ்வாய்", "புதன்", "வியாழன்", "வெள்ளி"], 1,
+         "செவ்வாய் முதல் 5-ஆம் நாள் = சனி. 4 நாட்கள் ஒத்திவைப்பு: சனி→ஞாயிறு→திங்கள்→செவ்வாய்→புதன். முக்கியக் கற்றல் கருத்து: முதலில் அசல் நாளைக் கண்டறிந்து, பின்னர் அந்தக் குறிப்பிட்ட நாளிலிருந்து ஒத்திவைப்பை எண்ணவும்."),
+        # Q10
+        ("பிப்ரவரியிலிருந்து தொடங்கி, மூன்று மாதங்களுக்கு ஒருமுறை ஒரு நிகழ்வு நடைபெறுகிறது. 4-ஆவது நிகழ்வு எந்த மாதத்தில் நடைபெறும்?",
+         ["செப்டம்பர்", "அக்டோபர்", "நவம்பர்", "டிசம்பர்"], 2,
+         "1-ஆவது=பிப்ரவரி, 2-ஆவது=மே, 3-ஆவது=ஆகஸ்ட், 4-ஆவது=நவம்பர். முக்கியக் கற்றல் கருத்து: “ஒவ்வொரு n-ஆவது மாதமும்” வகைக் கணக்குகளில், ஒவ்வொரு நிகழ்வின் மாதத்தையும் ஒவ்வொன்றாகப் பட்டியலிடவும்."),
+        # Q11
+        ("X மற்றும் Y-இன் வயதுகளின் கூடுதல் 60. X, Y-ஐவிட மும்மடங்கு வயதுடையவர். X-இன் வயதைக் காண்க.",
+         ["40", "42", "45", "48"], 2,
+         "3Y+Y=60 → 4Y=60 → Y=15. X=3Y=45. முக்கியக் கற்றல் கருத்து: தீர்க்கும் முன் இரு வயதுகளையும் ஒரே மாறியின் அடிப்படையில் வெளிப்படுத்தவும்."),
+        # Q12
+        ("A, B, C, D, E என்ற ஐந்து மாணவர்களில்: A, B-ஐவிட அதிகம் ஆனால் C-ஐவிடக் குறைவாக மதிப்பெண் பெற்றார். D, C-ஐவிட அதிகம் ஆனால் E-ஐவிடக் குறைவாக மதிப்பெண் பெற்றார். மிகக் குறைவாக மதிப்பெண் பெற்றவர் யார்?",
+         ["A", "B", "D", "E"], 1,
+         "வரிசை: B < A < C < D < E. முக்கியக் கற்றல் கருத்து: உச்சங்களைக் கண்டறிய, அனைத்துச் சார்புக் குறிப்புகளையும் ஒரே வரிசைப் பட்டியலாக இணைக்கவும்."),
+        # Q13
+        ("24 பேனாக்கள் 4 மாணவர்களுக்கு, ஒவ்வொருவரும் முந்தையவரைவிட 2 பேனாக்கள் அதிகம் பெறுமாறு பகிரப்படுகின்றன. மிகக் குறைவாகப் பெறும் மாணவர் பெறும் எண்ணிக்கையைக் காண்க.",
+         ["2", "3", "4", "5"], 1,
+         "மிகக் குறைவானது=x என்க. பங்குகள்: x, x+2, x+4, x+6. கூடுதல்=4x+12=24 → x=3. முக்கியக் கற்றல் கருத்து: அனைத்துப் பங்குகளையும் மிகச் சிறிய பங்கின் அடிப்படையில் கூட்டி, கொடுக்கப்பட்ட மொத்தத்துக்குச் சமப்படுத்தவும்."),
+        # Q14
+        ("A, B, C, D, E என்ற ஐந்து பேர் 1 முதல் 5 வரையிலான தளங்களில் (1 = அடி), தளத்துக்கு ஒருவராக வசிக்கின்றனர். B 3-ஆம் தளத்தில் வசிக்கிறார். A, B-க்கு மேலே ஆனால் மேல் தளத்தில் அல்லாமல் வசிக்கிறார். C, B-க்கு உடனடியாகக் கீழே வசிக்கிறார். D மேல் தளத்தில் வசிக்கிறார். 1-ஆம் தளத்தில் வசிப்பவர் யார்?",
+         ["A", "C", "D", "E"], 3,
+         "B = 3, C = 2 (B-க்கு உடனடியாகக் கீழே), D = 5 (மேல் தளம்). A, B-க்கு மேலே ஆனால் மேல் தளத்தில் இல்லை; எனவே A = 4. மீதமுள்ள ஒரே தளம் 1; எனவே E 1-ஆம் தளத்தில் வசிக்கிறார். முக்கியக் கற்றல் கருத்து: முதலில் உறுதியான தளங்களை நிலைநிறுத்தி, பின்னர் “மேலே/கீழே” மற்றும் “இல்லை” குறிப்புகளைக் கொண்டு மீதமுள்ளவற்றை நீக்கவும்."),
+        # Q15
+        ("நேற்று சனிக்கிழமை எனில், நாளை மறுநாள் என்ன கிழமை?",
+         ["திங்கள்", "செவ்வாய்", "புதன்", "வியாழன்"], 1,
+         "நேற்று = சனி; எனவே இன்று = ஞாயிறு. நாளை மறுநாள் = ஞாயிறு + 2 = செவ்வாய். முக்கியக் கற்றல் கருத்து: “நேற்று/நாளை” போன்ற குறிப்புகளை முதலில் இன்றைய நாளாக மாற்றவும்."),
+        # Q16
+        ("ஒரு தாய் தன் மகளைவிட ஐந்து மடங்கு வயதுடையவர். 10 ஆண்டுகளுக்குப் பின், தாய் மகளைவிட மூன்று மடங்கு வயதுடையவராக இருப்பார். மகளின் தற்போதைய வயதைக் காண்க.",
+         ["8", "10", "12", "15"], 1,
+         "M=5D. M+10=3(D+10) → 5D+10=3D+30 → D=10. முக்கியக் கற்றல் கருத்து: “n ஆண்டுகளுக்குப் பின்” வகைக் கணக்குகளில், சமப்படுத்தும் முன் இரு வயதுகளுடனும் n-ஐக் கூட்டவும்."),
+        # Q17
+        ("1 முதல் 5 வரை எண்ணிடப்பட்ட ஐந்து வீடுகளின் வரிசையில், வெள்ளை, நீல, மஞ்சள் வீடுகள் அடுத்தடுத்து உள்ளன; நீல வீடு வெள்ளைக்கும் மஞ்சளுக்கும் நேர் இடையில் உள்ளது. வெள்ளை வீடு மஞ்சள் வீட்டுக்கு இடப்புறம் உள்ளது. வெள்ளை வீடு வீடு 2 எனில், மஞ்சள் வீட்டின் இடத்தைக் காண்க.",
+         ["3", "4", "5", "6"], 1,
+         "மூன்று வீடுகளும் அடுத்தடுத்து, நீலம் நடுவில்: வெள்ளை = 2, நீலம் = 3, மஞ்சள் = 4. முக்கியக் கற்றல் கருத்து: வீடுகள் அடுத்தடுத்தவை எனக் கூறப்பட்டால் மட்டுமே இடங்களை நிர்ணயிக்க “இடையில்” என்ற குறிப்பைப் பயன்படுத்தவும்."),
+        # Q18
+        ("மூன்று நண்பர்கள் ₹1800-ஐ, இரண்டாமவர் முதலாமவரைவிட இருமடங்கும், மூன்றாமவர் இரண்டாமவரைவிட மும்மடங்கும் பெறுமாறு பகிர்ந்துகொள்கின்றனர். முதல் நண்பரின் பங்கைக் காண்க.",
+         ["150", "180", "200", "220"], 2,
+         "முதலாமவர்=x, இரண்டாமவர்=2x, மூன்றாமவர்=6x என்க. கூடுதல்=9x=1800 → x=200. முக்கியக் கற்றல் கருத்து: ஒவ்வொரு பங்கையும் மிகச் சிறிய பங்கின் மடங்காக வெளிப்படுத்தி, கூட்டி, மொத்தத்துக்குச் சமப்படுத்தவும்."),
+        # Q19
+        ("ஒரு வட்ட மேசையைச் சுற்றி ஆறு பேர் – மூன்று ஆண்கள் (D, E, F), மூன்று பெண்கள் (X, Y, Z) – மாறி மாறி அமர்ந்துள்ளனர். D, X-க்கும் Z-க்கும் இடையில் உள்ளார். D-க்கு எதிரே அமர்ந்திருப்பவர் யார்?",
+         ["E", "F", "X", "Y"], 3,
+         "இருக்கைகள் ஆண்–பெண் என மாறி மாறி வருகின்றன. D-இன் அண்டையர்கள் பெண்கள் X, Z. D-க்கு எதிரே உள்ள இருக்கை மூன்று இடங்கள் தள்ளி உள்ளது; எனவே அது ஒரு பெண்ணுக்குரியது. D-க்கு அருகில் இல்லாத ஒரே பெண் Y; எனவே Y, D-க்கு எதிரே அமர்ந்துள்ளார். முக்கியக் கற்றல் கருத்து: ஆண்களும் பெண்களும் மாறி மாறி அமரும் ஆறு இருக்கை அமைப்பில், ஓர் ஆணுக்கு எதிரே ஒரு பெண்ணும், ஒரு பெண்ணுக்கு எதிரே ஓர் ஆணும் அமர்ந்திருப்பர்."),
+        # Q20
+        ("ஏப்ரல் மாதத்திலிருந்து தொடங்கி, ஒவ்வோர் ஆண்டும் காலாண்டுக்கு ஒருமுறை (3 மாதங்களுக்கு ஒருமுறை) ஒரு நிகழ்வு நடைபெறுகிறது. 5-ஆவது நிகழ்வு எந்த மாதத்தில் நடைபெறும்?",
+         ["ஜனவரி", "பிப்ரவரி", "மார்ச்", "ஏப்ரல்"], 3,
+         "1-ஆவது=ஏப்ரல், 2-ஆவது=ஜூலை, 3-ஆவது=அக்டோபர், 4-ஆவது=ஜனவரி (அடுத்த ஆண்டு), 5-ஆவது=ஏப்ரல் (அடுத்த ஆண்டு). முக்கியக் கற்றல் கருத்து: காலாண்டு ஆண்டு அட்டவணை நான்கு நிகழ்வுகளுக்குப் பின் தொடக்க மாதத்துக்குத் திரும்புகிறது."),
+        # Q21
+        ("A, B-ஐவிட 7 வயது மூத்தவர். B, C-ஐவிட 4 வயது இளையவர். C-இன் வயது 25 எனில், A-இன் வயதைக் காண்க.",
+         ["25", "26", "28", "30"], 2,
+         "B=25−4=21. A=21+7=28. முக்கியக் கற்றல் கருத்து: நேரடியாகக் கொடுக்கப்பட்ட வயதை முதலில் தீர்த்து, பின்னர் மற்ற சார்புக் குறிப்புகள் வழியாக வெளிநோக்கிச் செயல்படவும்."),
+        # Q22
+        ("10 தளக் கட்டடம். X, Y-க்கு நான்கு தளங்கள் மேலே வசிக்கிறார். Z, Y-க்கு மூன்று தளங்கள் கீழே வசிக்கிறார். X 9-ஆம் தளத்தில் இருந்தால், Z-இன் தளத்தைக் காண்க.",
+         ["1", "2", "3", "4"], 1,
+         "X=9, Y=X−4=5, Z=Y−3=2. முக்கியக் கற்றல் கருத்து: நேரடியாகக் கொடுக்கப்பட்ட தளத்திலிருந்து பின்னோக்கிச் செயல்பட்டு, ஒவ்வொரு தொடர்பையும் வரிசையாகத் தீர்க்கவும்."),
+        # Q23
+        ("P, Q, R, S, T என்ற ஐந்து மாணவர்கள் தரவரிசைப்படுத்தப்படுகின்றனர். P, Q-ஐவிட அதிகம் ஆனால் R-ஐவிடக் குறைவாகப் பெற்றார். S மிகக் குறைவாகப் பெற்றார். T, R-ஐவிட அதிகம் பெற்றார். இரண்டாவது குறைந்த மதிப்பெண் பெற்றவர் யார்?",
+         ["P", "Q", "R", "T"], 1,
+         "வரிசை: S < Q < P < R < T. இரண்டாவது குறைவு = Q. முக்கியக் கற்றல் கருத்து: அனைத்துக் குறிப்புகளையும் ஒரே வரிசைப் பட்டியலாக இணைத்து, தேவையான தரவரிசையைப் படிக்கவும்."),
+        # Q24
+        ("ஒரு சதுர மேசையைச் சுற்றி, பக்கத்துக்கு ஒருவராக, நான்கு பேர் மையத்தை நோக்கி அமர்ந்துள்ளனர். W, X-க்கு எதிரே உள்ளார். Y, W-க்கு உடனடியாக வலப்புறம் உள்ளார். X-க்கு உடனடியாக இடப்புறம் அமர்ந்திருப்பவர் யார்?",
+         ["W", "Y", "Z", "தீர்மானிக்க இயலாது"], 1,
+         "W-ஐ இருக்கை 1 ஆகக் கொண்டு இருக்கைகளைக் கடிகாரத் திசையில் எண்ணிடவும்; X (W-க்கு எதிரே) = இருக்கை 3. Y, W-க்கு உடனடியாக வலப்புறம் (எதிர்க்கடிகாரம்); எனவே Y = இருக்கை 4, Z = இருக்கை 2. X-க்கு (இருக்கை 3) உடனடியாக இடப்புறம் (கடிகாரத் திசை) இருக்கை 4 = Y. முக்கியக் கற்றல் கருத்து: சதுர மேசையின் நான்கு இருக்கைகளையும் கடிகாரத் திசையில் எண்ணிட்டு, பின்னர் வலம் = எதிர்க்கடிகாரம், இடம் = கடிகாரம் எனப் பயன்படுத்தவும்."),
+        # Q25
+        ("இன்று (ஞாயிறு) முதல் ஏழு நாட்களில், நாளொன்றுக்கு ஒன்றாக ஏழு பணிகள் திட்டமிடப்பட்டுள்ளன. பணி M, பணி N-க்கு 3 நாட்கள் பின் திட்டமிடப்பட்டுள்ளது. பணி N திங்கள்கிழமை எனில், பணி M-க்கான நாளைக் காண்க.",
+         ["புதன்", "வியாழன்", "வெள்ளி", "சனி"], 1,
+         "N=திங்கள். M = திங்கள்+3 = வியாழன். முக்கியக் கற்றல் கருத்து: வாரத்தின் தொடக்கத்திலிருந்து அல்லாமல், குறிப்புப் பணிக்குக் கொடுக்கப்பட்ட குறிப்பிட்ட நாளிலிருந்து முன்னோக்கி எண்ணவும்."),
+        # Q26
+        ("1500 ₹ என்ற தொகை நான்கு பேருக்கு, ஒவ்வொருவரும் முந்தையவர் பெறுவதில் பாதியைப் பெறுமாறு பிரிக்கப்படுகிறது. முதலாமவரின் பங்கைக் காண்க.",
+         ["700", "750", "800", "850"], 2,
+         "15x/8 = 1500 → x = 800. முக்கியக் கற்றல் கருத்து: மொத்தத்துக்குச் சமப்படுத்தும் முன், பங்குகளைப் பெருக்குத் தொடராக (பாதியாக்கும் அமைப்பு) கூட்டவும்."),
+        # Q27
+        ("P, Q, R, S, T என்ற ஐந்து நண்பர்கள் ஒரு வட்ட மேசையைச் சுற்றி மையத்தை நோக்கி அமர்ந்துள்ளனர். Q, P-க்கு உடனடியாக இடப்புறம் உள்ளார். R, P-க்கு உடனடியாக வலப்புறம் உள்ளார். S, Q-க்கு அருகில் இல்லை. Q-க்கு உடனடியாக இடப்புறம் அமர்ந்திருப்பவர் யார்?",
+         ["R", "S", "T", "P"], 2,
+         "P-ஐ இருக்கை 1 ஆகக் கொண்டு இருக்கைகளைக் கடிகாரத் திசையில் எண்ணிடவும் (இடம் = கடிகாரம், வலம் = எதிர்க்கடிகாரம்). Q = இருக்கை 2, R = இருக்கை 5. S இருக்கை 3-இல் (Q-க்கு அருகில்) இருக்க முடியாது; எனவே S = இருக்கை 4, T = இருக்கை 3. Q-க்கு (இருக்கை 2) உடனடியாக இடப்புறம் (கடிகாரத் திசை) இருக்கை 3 = T. முக்கியக் கற்றல் கருத்து: இயலாத இடங்களை நீக்க, “அருகில் இல்லை” என்ற குறிப்பை நிலையான இருக்கைகளுடன் இணைக்கவும்."),
+        # Q28
+        ("6 மாடிக் கட்டடத்தில் (தளம் 1 = அடி), ஒவ்வொரு தளத்திலும் ஒருவர் வசிக்கிறார். M ஓர் இரட்டைத் தளத்தில் வசிக்கிறார். N, M-க்கு உடனடியாகக் கீழே வசிக்கிறார். O மேல் தளத்தில் வசிக்கிறார். P 1-ஆம் தளத்தில் வசிக்கிறார். Q, M-க்கு மேலே வசிக்கிறார். 2-ஆம் தளத்தில் வசிப்பவர் யார்?",
+         ["N", "Q", "R", "M"], 2,
+         "O = 6, P = 1. M இரட்டை எண்; எனவே M = 2 அல்லது 4. M = 2 எனில், N 1-ஆம் தளத்தில் இருக்க வேண்டும்; அது P-இன் தளம் – இயலாது. எனவே M = 4, N = 3. Q, M-க்கு மேலே; எனவே Q = 5. மீதமுள்ள நபர் R 2-ஆம் தளத்தில் வசிக்கிறார். முக்கியக் கற்றல் கருத்து: கட்டுப்பாடுள்ள குறிப்பின் (இங்கு, “இரட்டைத் தளம்”) ஒவ்வொரு சாத்தியமான மதிப்பையும் சோதித்து, முரண்பாட்டை ஏற்படுத்துவதை நிராகரிக்கவும்."),
+        # Q29
+        ("30 மாணவர்கள் கொண்ட ஒரு வகுப்பில், ஆஷாவின் தரவரிசை மேலிருந்து 9. பாபு, ஆஷாவுக்கு 5 தரவரிசைகள் கீழே உள்ளார். கீழிருந்து பாபுவின் தரவரிசை என்ன?",
+         ["15", "16", "17", "18"], 2,
+         "மேலிருந்து பாபுவின் தரவரிசை = 9 + 5 = 14. கீழிருந்து தரவரிசை = 30 − 14 + 1 = 17. முக்கியக் கற்றல் கருத்து: முதலில் ஒரு முனையிலிருந்து இடத்தைக் கண்டறிந்து, பின்னர் மொத்தம் − இடம் + 1 என்பதைக்கொண்டு மாற்றவும்."),
+        # Q30
+        ("950 ₹ என்ற தொகை X, Y, Z ஆகியோருக்கு, X, Y-ஐவிட ₹100 அதிகமும், Y, Z-ஐவிட ₹50 அதிகமும் பெறுமாறு பிரிக்கப்படுகிறது. X-இன் பங்கைக்காண்க.",
+         ["₹350", "₹400", "₹450", "₹300"], 1,
+         "Z = x என்க. எனவே Y = x + 50, X = x + 150. x + (x + 50) + (x + 150) = 950 → 3x = 750 → x = 250. X = 250 + 150 = ₹400. முக்கியக் கற்றல் கருத்து: குறிப்புகள் விகிதங்களுக்குப் பதிலாக வேறுபாடுகளைத் தரும்போது, ஒவ்வொரு பங்கையும் மிகச் சிறியதன் அடிப்படையில் வெளிப்படுத்தவும்."),
+    ]
+
+    # 30 Graded Assessment (English)
+    grad_en = [
+        # Q1
+        ("Five friends A, B, C, D, and E sit in a row facing North. C is in the middle. A is second to the left of C. E is immediately to the right of C. B is not at either end. Who sits at the extreme right?",
+         ["A", "D", "B", "E"], 1,
+         "Positions 1–5 from the left: C = 3, A = 1 (second to the left of C), E = 4. B is not at an end, so B = 2; the remaining person D = 5. Key Learning Point: Place the fixed person (middle) first, then use “not at the end” to decide between the remaining seats.", "EASY"),
+        # Q2
+        ("Four people P, Q, R, and S sit in a row facing North. P is at the left end. R is immediately to the left of S. Q is not adjacent to P. Who is second from the left?",
+         ["P", "R", "Q", "S"], 1,
+         "P = 1. Q is not next to P, so Q = 3 or 4. If Q = 3, seats 2 and 4 are not together for R and S – impossible. So Q = 4, R = 2, S = 3. Key Learning Point: Test the possible places for a restricted person and reject any that break another clue.", "MEDIUM"),
+        # Q3
+        ("Five friends A, B, C, D, and E sit around a circular table facing the centre. B is to the immediate right of A. C is to the immediate left of A. D is not adjacent to B. Who sits to the immediate right of B?",
+         ["E", "D", "C", "A"], 0,
+         "Number the seats clockwise with A at seat 1 (right = anticlockwise, left = clockwise). B = seat 5, C = seat 2. D cannot be at seat 4 (next to B), so D = 3 and E = 4. Immediately right (anticlockwise) of B (seat 5) is seat 4 = E. Key Learning Point: For people facing the centre, right is anticlockwise – apply this consistently to every clue.", "MEDIUM"),
+        # Q4
+        ("Four friends P, Q, R, and S sit around a circular table facing outward (away from the centre). Q is to the immediate right of P. R is opposite P. Who is to the immediate left of P?",
+         ["S", "R", "Q", "Cannot be determined"], 0,
+         "Facing outward, right = clockwise and left = anticlockwise. Seats clockwise from P = 1: Q = 2 (right of P), R = 3 (opposite), S = 4. Immediately left (anticlockwise) of P is seat 4 = S. Key Learning Point: When people face outward, the right/left directions are the reverse of the facing-centre convention.", "MEDIUM"),
+        # Q5
+        ("Five boxes J, K, L, M, and N are stacked one above another. L is at the bottom. K is immediately above L. N is at the top. J is below M. Which box is in the middle?",
+         ["N", "K", "M", "J"], 3,
+         "From the bottom: L = 1, K = 2, N = 5. J and M fill positions 3 and 4, with J below M: J = 3, M = 4. The middle (third) box is J. Key Learning Point: Place the boxes fixed at the top and bottom first, then use relative clues for the rest.", "EASY"),
+        # Q6
+        ("Five people P, Q, R, S, and T live on floors 1 to 5 (1 = bottom), one per floor. S lives on an even-numbered floor above Q. R lives on floor 1. P lives immediately above S. T does not live on floor 2. Who lives on floor 3?",
+         ["T", "Q", "S", "P"], 0,
+         "R = 1. S is even: 2 or 4. If S = 2, Q would have to be on floor 1 (R’s floor) – impossible. So S = 4 and P = 5. Q and T take floors 2 and 3; T is not on floor 2, so T = 3 and Q = 2. Key Learning Point: Use elimination: try each allowed value and discard the one that contradicts a fixed clue.", "MEDIUM"),
+        # Q7
+        ("If the day after tomorrow is Sunday, what was the day before yesterday?",
+         ["Tuesday", "Thursday", "Wednesday", "Saturday"], 2,
+         "Day after tomorrow = Sunday, so today = Friday. Day before yesterday = Friday − 2 = Wednesday. Key Learning Point: Convert every relative-day clue to “today” first, then count forward or backward.", "EASY"),
+        # Q8
+        ("If 1 January of a non-leap year is a Monday, what day of the week is 1 February of the same year?",
+         ["Wednesday", "Sunday", "Friday", "Thursday"], 3,
+         "January has 31 days = 4 weeks + 3 days. Monday + 3 days = Thursday. Key Learning Point: Only the odd days (days left over after complete weeks) change the day of the week.", "EASY"),
+        # Q9
+        ("Seven lectures are held one per day from Monday to Sunday. Maths is on Wednesday. History is two days after Maths. English is on the day immediately after History. On which day is English?",
+         ["Thursday", "Saturday", "Friday", "Sunday"], 1,
+         "Maths = Wednesday, so History = Friday. English is the next day = Saturday. Key Learning Point: Chain the scheduling clues from the one fixed day.", "EASY"),
+        # Q10
+        ("The 12th of a month is a Tuesday. What day of the week is the 30th of the same month?",
+         ["Friday", "Monday", "Sunday", "Saturday"], 3,
+         "30 − 12 = 18 days = 2 weeks + 4 days. Tuesday + 4 days = Saturday. Key Learning Point: Divide the gap by 7; only the remainder shifts the day of the week.", "EASY"),
+        # Q11
+        ("Three bells ring at intervals of 4, 6, and 10 minutes. If they ring together at 9:00 a.m., when will they next ring together?",
+         ["9:30 a.m.", "10:00 a.m.", "9:40 a.m.", "11:00 a.m."], 1,
+         "They ring together again after LCM(4, 6, 10) = 60 minutes. 9:00 a.m. + 60 minutes = 10:00 a.m. Key Learning Point: Events with different repeating intervals coincide again after the LCM of the intervals.", "EASY"),
+        # Q12
+        ("Five years ago, the ratio of the ages of A and B was 3 : 4. The sum of their present ages is 45 years. Find A’s present age.",
+         ["15 years", "20 years", "18 years", "25 years"], 1,
+         "Five years ago: A = 3k, B = 4k. Present ages: 3k + 5 and 4k + 5. 7k + 10 = 45 → k = 5. A = 3(5) + 5 = 20 years. Key Learning Point: Apply the ratio to the ages at the stated time, then add the years back before using the present-age condition.", "EASY"),
+        # Q13
+        ("The average age of a father and his two sons is 26 years. The sons are 10 and 14 years old. How old will the father be after 5 years?",
+         ["54 years", "57 years", "59 years", "64 years"], 2,
+         "Total age = 3 × 26 = 78. Father = 78 − 10 − 14 = 54. After 5 years: 54 + 5 = 59 years. Key Learning Point: Convert an average to a total first, then subtract the known ages.", "EASY"),
+        # Q14
+        ("Anu is now twice as old as Bala was 6 years ago. Bala is now 16 years old. How old is Anu now?",
+         ["22 years", "26 years", "32 years", "20 years"], 3,
+         "Bala 6 years ago = 16 − 6 = 10. Anu = 2 × 10 = 20 years. Key Learning Point: Read the time reference of each age carefully (“now” vs “6 years ago”) before multiplying.", "EASY"),
+        # Q15
+        ("The present ages of three siblings are in the ratio 2 : 3 : 5, and their total age is 50 years. After how many years will the eldest be 30 years old?",
+         ["5", "3", "7", "10"], 0,
+         "Total parts = 10; one part = 5. Ages: 10, 15, 25. The eldest (25) will be 30 after 5 years. Key Learning Point: Find the actual ages from the ratio before answering a future-age question.", "EASY"),
+        # Q16
+        ("P is heavier than Q. R is heavier than P. S is lighter than Q. T is lighter than R but heavier than P. Who is the second heaviest?",
+         ["P", "R", "T", "Q"], 2,
+         "Order from lightest: S < Q < P < T < R. The second heaviest is T. Key Learning Point: Insert each person into the chain one clue at a time, checking both sides of “lighter than … but heavier than …”.", "MEDIUM"),
+        # Q17
+        ("A scored more than B. C scored more than B. D scored less than B. Who scored the highest?",
+         ["Cannot be determined", "C", "D", "A"], 0,
+         "Both A and C scored more than B, but no clue compares A with C. So the highest scorer cannot be determined. Key Learning Point: If two people are compared only with a third person, their order relative to each other is unknown.", "EASY"),
+        # Q18
+        ("In a race of 8 runners, Kiran finished ahead of exactly 5 runners. What was Kiran’s position?",
+         ["2nd", "5th", "4th", "3rd"], 3,
+         "5 runners finished behind Kiran, so 8 − 5 − 1 = 2 runners finished ahead of him. Kiran’s position = 2 + 1 = 3rd. Key Learning Point: Position = (number of people ahead) + 1.", "EASY"),
+        # Q19
+        ("₹740 is divided among A, B, and C such that A gets ₹40 more than B, and B gets ₹20 more than C. Find C’s share.",
+         ["₹200", "₹220", "₹240", "₹260"], 1,
+         "Let C = x. Then B = x + 20 and A = x + 60. 3x + 80 = 740 → 3x = 660 → x = 220. Key Learning Point: Express all shares in terms of the smallest share when the clues give differences.", "EASY"),
+        # Q20
+        ("A father divides ₹12,000 among his three children in the ratio 1/2 : 1/3 : 1/6. Find the largest share.",
+         ["₹6,000", "₹5,000", "₹4,000", "₹7,200"], 0,
+         "Multiply each term by the LCM 6: 1/2 : 1/3 : 1/6 = 3 : 2 : 1. Largest share = 3/6 × 12,000 = ₹6,000. Key Learning Point: Convert a ratio of fractions to whole numbers by multiplying every term by the LCM of the denominators.", "EASY"),
+        # Q21
+        ("56 mangoes are shared among P, Q, and R. P gets 3/7 of the total, and Q gets half of the remainder. How many mangoes does R get?",
+         ["12", "16", "14", "18"], 1,
+         "P = 3/7 × 56 = 24. Remainder = 56 − 24 = 32. Q = 32 ÷ 2 = 16, so R = 32 − 16 = 16. Key Learning Point: Apply each fraction to the correct base – the total or the remainder – as stated.", "EASY"),
+        # Q22
+        ("From six people A, B, C, D, E, and F, a team of three is chosen. A and B must be together. C cannot be with A. If D is chosen, E must also be chosen. F is not selected. If A is in the team, who is the third member?",
+         ["C", "D", "E", "F"], 2,
+         "A is chosen, so B is chosen too. C cannot join A, and F is not selected. D would need E as well, making four members – impossible. So the third member is E. Key Learning Point: Apply each condition in turn to eliminate candidates until only one remains.", "MEDIUM"),
+        # Q23
+        ("Ravi’s birthday is 3 days after Sita’s. Sita’s birthday is 2 days before Kavin’s. Kavin’s birthday is on a Thursday. On which day is Ravi’s birthday?",
+         ["Wednesday", "Thursday", "Friday", "Saturday"], 2,
+         "Sita = 2 days before Thursday = Tuesday. Ravi = 3 days after Tuesday = Friday. Key Learning Point: Start from the one fixed day and apply each “before/after” clue in sequence.", "EASY"),
+        # Q24
+        ("In a row of 20 people facing North, A is 7th from the left. B is 4 places to the right of A. What is B’s position from the right?",
+         ["9th", "10th", "11th", "12th"], 1,
+         "B’s position from the left = 7 + 4 = 11. From the right = 20 − 11 + 1 = 10th. Key Learning Point: Find the position from one end first, then convert using Total − position + 1.", "EASY"),
+        # Q25
+        ("Task G is scheduled on a Friday. Task F is scheduled 4 days after Task G, and Task H is scheduled 2 days before Task F. On which day is Task H?",
+         ["Saturday", "Monday", "Sunday", "Tuesday"], 2,
+         "F = Friday + 4 days = Tuesday. H = Tuesday − 2 days = Sunday. Key Learning Point: Count forward or backward from the specific reference task, one clue at a time.", "EASY"),
+        # Q26
+        ("₹1,700 is divided among A, B, and C so that A gets 2/3 of what B gets, and B gets 1/4 of what C gets. Find A’s share.",
+         ["₹150", "₹250", "₹200", "₹300"], 2,
+         "Let C = 12x. Then B = 3x and A = 2/3 × 3x = 2x. 2x + 3x + 12x = 17x = 1,700 → x = 100. A = ₹200. Key Learning Point: Choose a convenient multiple for the base share so that every other share becomes a whole number.", "MEDIUM"),
+        # Q27
+        ("Six friends A, B, C, D, E, and F sit around a circular table facing the centre. A is opposite D. B is to the immediate left of A. C is to the immediate right of D. E is not adjacent to A. Who sits opposite B?",
+         ["E", "C", "F", "D"], 0,
+         "Number the seats clockwise with A at seat 1: D = seat 4. B (left of A, clockwise) = seat 2; C (right of D, anticlockwise) = seat 3. E is not next to A (seats 2 and 6), so E = 5 and F = 6. Opposite B (seat 2) is seat 5 = E. Key Learning Point: Fix the opposite pair first, then apply right = anticlockwise and left = clockwise for the neighbours.", "MEDIUM"),
+        # Q28
+        ("In a 5-storey building (floor 1 = bottom), one person lives on each floor. P lives on an odd-numbered floor. Q lives immediately above P. R lives on the top floor. S lives below P. T lives on floor 2. On which floor does P live?",
+         ["3", "1", "4", "5"], 0,
+         "R = 5 and T = 2. P is odd, so P = 1 or 3. S lives below P, so P cannot be 1. P = 3, Q = 4, S = 1. Key Learning Point: Use a “below” clue to rule out the lowest possible value.", "MEDIUM"),
+        # Q29
+        ("In a queue, Meena is 10th from the front and Sathya is 25th from the front. How many people stand between them?",
+         ["13", "16", "15", "14"], 3,
+         "People between = 25 − 10 − 1 = 14. Key Learning Point: Between two positions counted from the same end = larger − smaller − 1.", "EASY"),
+        # Q30
+        ("Some chocolates are shared among 4 children. The first gets half of them, the second gets half of the remainder, and the third gets half of what is then left. The fourth child gets the remaining 5 chocolates. How many chocolates were there in total?",
+         ["20", "30", "80", "40"], 3,
+         "After three halvings, the remainder is 1/8 of the total. 1/8 of the total = 5, so the total = 40. Key Learning Point: Work backward from the final remainder, doubling at each halving step.", "MEDIUM"),
+    ]
+
+    # 30 Graded Assessment (Tamil)
+    grad_ta = [
+        # Q1
+        ("A, B, C, D, E என்ற ஐந்து நண்பர்கள் வடக்கை நோக்கி ஒரு வரிசையில் அமர்ந்துள்ளனர். C நடுவில் உள்ளார். A, C-க்கு இடமிருந்து இரண்டாவதாக உள்ளார். E, C-க்கு உடனடியாக வலப்புறம் உள்ளார். B எந்த முனையிலும் இல்லை. வலது ஓரத்தில் அமர்ந்திருப்பவர் யார்?",
+         ["A", "D", "B", "E"], 1,
+         "இடமிருந்து 1–5 இடங்கள்: C = 3, A = 1 (C-க்கு இடமிருந்து இரண்டாவது), E = 4. B முனையில் இல்லை; எனவே B = 2; மீதமுள்ள D = 5. முக்கியக் கற்றல் கருத்து: நிலையான நபரை (நடு) முதலில் அமர்த்தி, பின்னர் மீதமுள்ள இருக்கைகளுக்கிடையே தீர்மானிக்க “முனையில் இல்லை” என்பதைப் பயன்படுத்தவும்."),
+        # Q2
+        ("P, Q, R, S என்ற நான்கு பேர் வடக்கை நோக்கி ஒரு வரிசையில் அமர்ந்துள்ளனர். P இடது முனையில் உள்ளார். R, S-க்கு உடனடியாக இடப்புறம் உள்ளார். Q, P-க்கு அருகில் இல்லை. இடமிருந்து இரண்டாவதாக இருப்பவர் யார்?",
+         ["P", "R", "Q", "S"], 1,
+         "P = 1. Q, P-க்கு அருகில் இல்லை; எனவே Q = 3 அல்லது 4. Q = 3 எனில், R, S-க்கான இருக்கைகள் 2 மற்றும் 4 அடுத்தடுத்து இல்லை – இயலாது. எனவே Q = 4, R = 2, S = 3. முக்கியக் கற்றல் கருத்து: கட்டுப்பாடுள்ள நபருக்கான சாத்தியமான இடங்களைச் சோதித்து, மற்றொரு குறிப்பை மீறுவதை நிராகரிக்கவும்."),
+        # Q3
+        ("A, B, C, D, E என்ற ஐந்து நண்பர்கள் ஒரு வட்ட மேசையைச் சுற்றி மையத்தை நோக்கி அமர்ந்துள்ளனர். B, A-க்கு உடனடியாக வலப்புறம் உள்ளார். C, A-க்கு உடனடியாக இடப்புறம் உள்ளார். D, B-க்கு அருகில் இல்லை. B-க்கு உடனடியாக வலப்புறம் அமர்ந்திருப்பவர் யார்?",
+         ["E", "D", "C", "A"], 0,
+         "A-ஐ இருக்கை 1 ஆகக் கொண்டு இருக்கைகளைக் கடிகாரத் திசையில் எண்ணிடவும் (வலம் = எதிர்க்கடிகாரம், இடம் = கடிகாரம்). B = இருக்கை 5, C = இருக்கை 2. D இருக்கை 4-இல் (B-க்கு அருகில்) இருக்க முடியாது; எனவே D = 3, E = 4. B-க்கு (இருக்கை 5) உடனடியாக வலப்புறம் (எதிர்க்கடிகாரம்) இருக்கை 4 = E. முக்கியக் கற்றல் கருத்து: மையத்தை நோக்கி அமர்ந்திருப்போருக்கு வலம் என்பது எதிர்க்கடிகாரத் திசை – இதை ஒவ்வொரு குறிப்புக்கும் சீராகப் பயன்படுத்தவும்."),
+        # Q4
+        ("P, Q, R, S என்ற நான்கு நண்பர்கள் ஒரு வட்ட மேசையைச் சுற்றி வெளிப்புறம் நோக்கி (மையத்திலிருந்து விலகி) அமர்ந்துள்ளனர். Q, P-க்கு உடனடியாக வலப்புறம் உள்ளார். R, P-க்கு எதிரே உள்ளார். P-க்கு உடனடியாக இடப்புறம் இருப்பவர் யார்?",
+         ["S", "R", "Q", "தீர்மானிக்க இயலாது"], 0,
+         "வெளிப்புறம் நோக்கியிருக்கும்போது, வலம் = கடிகாரத் திசை, இடம் = எதிர்க்கடிகாரத் திசை. P = 1 முதல் கடிகாரத் திசையில் இருக்கைகள்: Q = 2 (P-க்கு வலம்), R = 3 (எதிரே), S = 4. P-க்கு உடனடியாக இடப்புறம் (எதிர்க்கடிகாரம்) இருக்கை 4 = S. முக்கியக் கற்றல் கருத்து: வெளிப்புறம் நோக்கியிருக்கும்போது, வலம்/இடம் திசைகள் மையத்தை நோக்கியிருக்கும் முறைக்குத் தலைகீழாகும்."),
+        # Q5
+        ("J, K, L, M, N என்ற ஐந்து பெட்டிகள் ஒன்றன்மேல் ஒன்றாக அடுக்கப்பட்டுள்ளன. L அடியில் உள்ளது. K, L-க்கு உடனடியாக மேலே உள்ளது. N மேலே உள்ளது. J, M-க்குக் கீழே உள்ளது. நடுவில் உள்ள பெட்டி எது?",
+         ["N", "K", "M", "J"], 3,
+         "கீழிருந்து: L = 1, K = 2, N = 5. J-உம் M-உம் 3, 4 ஆகிய இடங்களை நிரப்புகின்றன; J, M-க்குக் கீழே: J = 3, M = 4. நடுவில் (மூன்றாவது) உள்ள பெட்டி J. முக்கியக் கற்றல் கருத்து: மேலும் கீழும் நிலைநிறுத்தப்பட்ட பெட்டிகளை முதலில் அமர்த்தி, பின்னர் மீதமுள்ளவற்றுக்குச் சார்புக் குறிப்புகளைப் பயன்படுத்தவும்."),
+        # Q6
+        ("P, Q, R, S, T என்ற ஐந்து பேர் 1 முதல் 5 வரையிலான தளங்களில் (1 = அடி), தளத்துக்கு ஒருவராக வசிக்கின்றனர். S, Q-க்கு மேலே ஓர் இரட்டை எண் தளத்தில் வசிக்கிறார். R 1-ஆம் தளத்தில் வசிக்கிறார். P, S-க்கு உடனடியாக மேலே வசிக்கிறார். T 2-ஆம் தளத்தில் வசிக்கவில்லை. 3-ஆம் தளத்தில் வசிப்பவர் யார்?",
+         ["T", "Q", "S", "P"], 0,
+         "R = 1. S இரட்டை எண்: 2 அல்லது 4. S = 2 எனில், Q 1-ஆம் தளத்தில் (R-இன் தளம்) இருக்க வேண்டும் – இயலாது. எனவே S = 4, P = 5. Q-உம் T-உம் 2, 3 ஆகிய தளங்களைப் பெறுகின்றனர்; T 2-இல் இல்லை; எனவே T = 3, Q = 2. முக்கியக் கற்றல் கருத்து: நீக்கல் முறையைப் பயன்படுத்தவும்: அனுமதிக்கப்பட்ட ஒவ்வொரு மதிப்பையும் சோதித்து, நிலையான குறிப்புக்கு முரண்படுவதை நிராகரிக்கவும்."),
+        # Q7
+        ("நாளை மறுநாள் ஞாயிற்றுக்கிழமை எனில், நேற்று முன்தினம் என்ன கிழமை?",
+         ["செவ்வாய்", "வியாழன்", "புதன்", "சனி"], 2,
+         "நாளை மறுநாள் = ஞாயிறு; எனவே இன்று = வெள்ளி. நேற்று முன்தினம் = வெள்ளி − 2 = புதன். முக்கியக் கற்றல் கருத்து: ஒவ்வொரு சார்பு நாள் குறிப்பையும் முதலில் “இன்று” என மாற்றி, பின்னர் முன்னோக்கி அல்லது பின்னோக்கி எண்ணவும்."),
+        # Q8
+        ("லீப் அல்லாத ஓர் ஆண்டில் ஜனவரி 1 திங்கள்கிழமை எனில், அதே ஆண்டின் பிப்ரவரி 1 என்ன கிழமை?",
+         ["புதன்", "ஞாயிறு", "வெள்ளி", "வியாழன்"], 3,
+         "ஜனவரியில் 31 நாட்கள் = 4 வாரங்கள் + 3 நாட்கள். திங்கள் + 3 நாட்கள் = வியாழன். முக்கியக் கற்றல் கருத்து: முழு வாரங்களுக்குப் பின் மீதமுள்ள நாட்கள் (ஒற்றை நாட்கள்) மட்டுமே கிழமையை மாற்றுகின்றன."),
+        # Q9
+        ("திங்கள் முதல் ஞாயிறு வரை, நாளொன்றுக்கு ஒன்றாக ஏழு விரிவுரைகள் நடைபெறுகின்றன. கணிதம் புதன்கிழமை. வரலாறு கணிதத்துக்கு இரண்டு நாட்கள் பின். ஆங்கிலம் வரலாற்றுக்கு உடனடியாக அடுத்த நாள். ஆங்கிலம் எந்த நாளில்?",
+         ["வியாழன்", "சனி", "வெள்ளி", "ஞாயிறு"], 1,
+         "கணிதம் = புதன்; எனவே வரலாறு = வெள்ளி. ஆங்கிலம் அடுத்த நாள் = சனி. முக்கியக் கற்றல் கருத்து: நிலையான ஒரே நாளிலிருந்து தொடங்கி, கால அட்டவணைக் குறிப்புகளைச் சங்கிலியாக இணைக்கவும்."),
+        # Q10
+        ("ஒரு மாதத்தின் 12-ஆம் தேதி செவ்வாய்க்கிழமை. அதே மாதத்தின் 30-ஆம் தேதி என்ன கிழமை?",
+         ["வெள்ளி", "திங்கள்", "ஞாயிறு", "சனி"], 3,
+         "30 − 12 = 18 நாட்கள் = 2 வாரங்கள் + 4 நாட்கள். செவ்வாய் + 4 நாட்கள் = சனி. முக்கியக் கற்றல் கருத்து: இடைவெளியை 7-ஆல் வகுக்கவும்; மீதி மட்டுமே கிழமையை மாற்றுகிறது."),
+        # Q11
+        ("மூன்று மணிகள் முறையே 4, 6, 10 நிமிட இடைவெளிகளில் ஒலிக்கின்றன. அவை காலை 9:00 மணிக்கு ஒன்றாக ஒலித்தால், அடுத்து எப்போது ஒன்றாக ஒலிக்கும்?",
+         ["காலை 9:30", "காலை 10:00", "காலை 9:40", "காலை 11:00"], 1,
+         "அவை மீ.பொ.ம(4, 6, 10) = 60 நிமிடங்களுக்குப் பின் மீண்டும் ஒன்றாக ஒலிக்கும். காலை 9:00 + 60 நிமிடங்கள் = காலை 10:00. முக்கியக் கற்றல் கருத்து: வெவ்வேறு இடைவெளிகளில் மீண்டும் நிகழும் நிகழ்வுகள், அவ்விடைவெளிகளின் மீ.பொ.ம-க்குப் பின் மீண்டும் ஒன்றாக நிகழும்."),
+        # Q12
+        ("ஐந்து ஆண்டுகளுக்கு முன், A மற்றும் B-இன் வயதுகளின் விகிதம் 3 : 4. அவர்களின் தற்போதைய வயதுகளின் கூடுதல் 45 ஆண்டுகள். A-இன் தற்போதைய வயதைக் காண்க.",
+         ["15 ஆண்டுகள்", "20 ஆண்டுகள்", "18 ஆண்டுகள்", "25 ஆண்டுகள்"], 1,
+         "ஐந்து ஆண்டுகளுக்கு முன்: A = 3k, B = 4k. தற்போதைய வயதுகள்: 3k + 5, 4k + 5. 7k + 10 = 45 → k = 5. A = 3(5) + 5 = 20 ஆண்டுகள். முக்கியக் கற்றல் கருத்து: குறிப்பிட்ட காலத்தின் வயதுகளுக்கு விகிதத்தைப் பயன்படுத்தி, தற்போதைய வயது நிபந்தனையைப் பயன்படுத்தும் முன் ஆண்டுகளைக் கூட்டவும்."),
+        # Q13
+        ("ஒரு தந்தை மற்றும் அவரது இரு மகன்களின் சராசரி வயது 26 ஆண்டுகள். மகன்களின் வயது 10 மற்றும் 14. 5 ஆண்டுகளுக்குப் பின் தந்தையின் வயது என்ன?",
+         ["54 ஆண்டுகள்", "57 ஆண்டுகள்", "59 ஆண்டுகள்", "64 ஆண்டுகள்"], 2,
+         "மொத்த வயது = 3 × 26 = 78. தந்தை = 78 − 10 − 14 = 54. 5 ஆண்டுகளுக்குப் பின்: 54 + 5 = 59 ஆண்டுகள். முக்கியக் கற்றல் கருத்து: முதலில் சராசரியை மொத்தமாக மாற்றி, பின்னர் தெரிந்த வயதுகளைக் கழிக்கவும்."),
+        # Q14
+        ("பாலா 6 ஆண்டுகளுக்கு முன் இருந்த வயதைவிட அனு இப்போது இருமடங்கு வயதுடையவர். பாலாவின் தற்போதைய வயது 16. அனுவின் தற்போதைய வயது என்ன?",
+         ["22 ஆண்டுகள்", "26 ஆண்டுகள்", "32 ஆண்டுகள்", "20 ஆண்டுகள்"], 3,
+         "6 ஆண்டுகளுக்கு முன் பாலா = 16 − 6 = 10. அனு = 2 × 10 = 20 ஆண்டுகள். முக்கியக் கற்றல் கருத்து: பெருக்கும் முன், ஒவ்வொரு வயதின் காலக் குறிப்பையும் (“இப்போது” / “6 ஆண்டுகளுக்கு முன்”) கவனமாகப் படிக்கவும்."),
+        # Q15
+        ("மூன்று உடன்பிறந்தோரின் தற்போதைய வயதுகள் 2 : 3 : 5 என்ற விகிதத்தில் உள்ளன; அவர்களின் மொத்த வயது 50 ஆண்டுகள். எத்தனை ஆண்டுகளுக்குப் பின் மூத்தவருக்கு 30 வயதாகும்?",
+         ["5", "3", "7", "10"], 0,
+         "மொத்தப் பகுதிகள் = 10; ஒரு பகுதி = 5. வயதுகள்: 10, 15, 25. மூத்தவர் (25) 5 ஆண்டுகளுக்குப் பின் 30 வயதை அடைவார். முக்கியக் கற்றல் கருத்து: எதிர்கால வயது வினாவுக்கு விடையளிக்கும் முன், விகிதத்திலிருந்து உண்மையான வயதுகளைக் கண்டறியவும்."),
+        # Q16
+        ("P, Q-ஐவிட எடை அதிகம். R, P-ஐவிட எடை அதிகம். S, Q-ஐவிட எடை குறைவு. T, R-ஐவிட எடை குறைவு ஆனால் P-ஐவிட அதிகம். இரண்டாவது அதிக எடை உடையவர் யார்?",
+         ["P", "R", "T", "Q"], 2,
+         "குறைந்த எடையிலிருந்து வரிசை: S < Q < P < T < R. இரண்டாவது அதிக எடை உடையவர் T. முக்கியக் கற்றல் கருத்து: “… ஐவிடக் குறைவு ஆனால் … ஐவிட அதிகம்” என்பதன் இருபுறங்களையும் சரிபார்த்து, ஒவ்வொருவரையும் ஒவ்வொரு குறிப்பாகச் சங்கிலியில் செருகவும்."),
+        # Q17
+        ("A, B-ஐவிட அதிக மதிப்பெண் பெற்றார். C, B-ஐவிட அதிக மதிப்பெண் பெற்றார். D, B-ஐவிடக் குறைவாகப் பெற்றார். அதிக மதிப்பெண் பெற்றவர் யார்?",
+         ["தீர்மானிக்க இயலாது", "C", "D", "A"], 0,
+         "A-உம் C-உம் B-ஐவிட அதிகம் பெற்றனர்; ஆனால் A-ஐயும் C-ஐயும் ஒப்பிடும் குறிப்பு எதுவும் இல்லை. எனவே அதிக மதிப்பெண் பெற்றவரைத் தீர்மானிக்க இயலாது. முக்கியக் கற்றல் கருத்து: இருவர் மூன்றாமவருடன் மட்டுமே ஒப்பிடப்பட்டால், அவர்கள் இருவருக்குமிடையிலான வரிசை தெரியாது."),
+        # Q18
+        ("8 ஓட்டப்பந்தய வீரர்கள் பங்கேற்ற ஒரு போட்டியில், கிரண் சரியாக 5 வீரர்களுக்கு முன்னால் முடித்தார். கிரணின் இடம் என்ன?",
+         ["2-ஆவது", "5-ஆவது", "4-ஆவது", "3-ஆவது"], 3,
+         "5 வீரர்கள் கிரணுக்குப் பின்னால் முடித்தனர்; எனவே 8 − 5 − 1 = 2 வீரர்கள் அவருக்கு முன்னால் முடித்தனர். கிரணின் இடம் = 2 + 1 = 3-ஆவது. முக்கியக் கற்றல் கருத்து: இடம் = (முன்னால் உள்ளவர்களின் எண்ணிக்கை) + 1."),
+        # Q19
+        ("740 ₹ என்ற தொகை A, B, C ஆகியோருக்கு, A, B-ஐவிட ₹40 அதிகமும், B, C-ஐவிட ₹20 அதிகமும் பெறுமாறு பிரிக்கப்படுகிறது. C-இன் பங்கைக்காண்க.",
+         ["₹200", "₹220", "₹240", "₹260"], 1,
+         "C = x என்க. எனவே B = x + 20, A = x + 60. 3x + 80 = 740 → 3x = 660 → x = 220. முக்கியக் கற்றல் கருத்து: குறிப்புகள் வேறுபாடுகளைத் தரும்போது, அனைத்துப் பங்குகளையும் மிகச் சிறிய பங்கின் அடிப்படையில் வெளிப்படுத்தவும்."),
+        # Q20
+        ("ஒரு தந்தை ₹12,000-ஐத் தன் மூன்று குழந்தைகளுக்கு 1/2 : 1/3 : 1/6 என்ற விகிதத்தில் பிரிக்கிறார். மிகப்பெரிய பங்கைக்காண்க.",
+         ["₹6,000", "₹5,000", "₹4,000", "₹7,200"], 0,
+         "ஒவ்வோர் உறுப்பையும் மீ.பொ.ம 6-ஆல் பெருக்க: 1/2 : 1/3 : 1/6 = 3 : 2 : 1. மிகப்பெரிய பங்கு = 3/6 × 12,000 = ₹6,000. முக்கியக் கற்றல் கருத்து: பின்ன விகிதத்தை முழு எண்களாக மாற்ற, ஒவ்வோர் உறுப்பையும் பகுதிகளின் மீ.பொ.ம-ஆல் பெருக்கவும்."),
+        # Q21
+        ("56 மாம்பழங்கள் P, Q, R ஆகியோருக்குப் பகிரப்படுகின்றன. P மொத்தத்தில் 3/7 பெறுகிறார்; Q மீதியில் பாதியைப் பெறுகிறார். R எத்தனை மாம்பழங்கள் பெறுகிறார்?",
+         ["12", "16", "14", "18"], 1,
+         "P = 3/7 × 56 = 24. மீதம் = 56 − 24 = 32. Q = 32 ÷ 2 = 16; எனவே R = 32 − 16 = 16. முக்கியக் கற்றல் கருத்து: ஒவ்வொரு பின்னத்தையும் கூறப்பட்டபடி சரியான அடிப்படைக்கு – மொத்தம் அல்லது மீதி – பயன்படுத்தவும்."),
+        # Q22
+        ("A, B, C, D, E, F என்ற ஆறு பேரிலிருந்து மூவர் கொண்ட ஓர் அணி தேர்ந்தெடுக்கப்படுகிறது. A-உம் B-உம் சேர்ந்தே இருக்க வேண்டும். C, A-உடன் இருக்கக் கூடாது. D தேர்ந்தெடுக்கப்பட்டால், E-உம் தேர்ந்தெடுக்கப்பட வேண்டும். F தேர்ந்தெடுக்கப்படவில்லை. அணியில் A இருந்தால், மூன்றாவது உறுப்பினர் யார்?",
+         ["C", "D", "E", "F"], 2,
+         "A தேர்ந்தெடுக்கப்பட்டதால் B-உம் தேர்ந்தெடுக்கப்படுகிறார். C, A-உடன் சேர முடியாது; F தேர்ந்தெடுக்கப்படவில்லை. D-க்கு E-உம் தேவை; அது நான்கு உறுப்பினர்களாகிவிடும் – இயலாது. எனவே மூன்றாவது உறுப்பினர் E. முக்கியக் கற்றல் கருத்து: ஒரே ஒருவர் மீதமிருக்கும் வரை, ஒவ்வொரு நிபந்தனையையும் வரிசையாகப் பயன்படுத்தி வாய்ப்புள்ளோரை நீக்கவும்."),
+        # Q23
+        ("ரவியின் பிறந்தநாள் சீதாவின் பிறந்தநாளுக்கு 3 நாட்கள் பின். சீதாவின் பிறந்தநாள் கவினின் பிறந்தநாளுக்கு 2 நாட்கள் முன். கவினின் பிறந்தநாள் வியாழக்கிழமை. ரவியின் பிறந்தநாள் எந்தக் கிழமை?",
+         ["புதன்", "வியாழன்", "வெள்ளி", "சனி"], 2,
+         "சீதா = வியாழனுக்கு 2 நாட்கள் முன் = செவ்வாய். ரவி = செவ்வாய்க்கு 3 நாட்கள் பின் = வெள்ளி. முக்கியக் கற்றல் கருத்து: நிலையான ஒரே நாளிலிருந்து தொடங்கி, ஒவ்வொரு “முன்/பின்” குறிப்பையும் வரிசையாகப் பயன்படுத்தவும்."),
+        # Q24
+        ("வடக்கை நோக்கி நிற்கும் 20 பேர் கொண்ட ஒரு வரிசையில், A இடமிருந்து 7-ஆவதாக உள்ளார். B, A-க்கு 4 இடங்கள் வலப்புறம் உள்ளார். வலமிருந்து B-இன் இடம் என்ன?",
+         ["9-ஆவது", "10-ஆவது", "11-ஆவது", "12-ஆவது"], 1,
+         "இடமிருந்து B-இன் இடம் = 7 + 4 = 11. வலமிருந்து = 20 − 11 + 1 = 10-ஆவது. முக்கியக் கற்றல் கருத்து: முதலில் ஒரு முனையிலிருந்து இடத்தைக் கண்டறிந்து, பின்னர் மொத்தம் − இடம் + 1 என்பதைக்கொண்டு மாற்றவும்."),
+        # Q25
+        ("பணி G ஒரு வெள்ளிக்கிழமை திட்டமிடப்பட்டுள்ளது. பணி F, பணி G-க்கு 4 நாட்கள் பின்னும், பணி H, பணி F-க்கு 2 நாட்கள் முன்னும் திட்டமிடப்பட்டுள்ளன. பணி H எந்த நாளில்?",
+         ["சனி", "திங்கள்", "ஞாயிறு", "செவ்வாய்"], 2,
+         "F = வெள்ளி + 4 நாட்கள் = செவ்வாய். H = செவ்வாய் − 2 நாட்கள் = ஞாயிறு. முக்கியக் கற்றல் கருத்து: குறிப்பிட்ட குறிப்புப் பணியிலிருந்து, ஒவ்வொரு குறிப்பாக முன்னோக்கி அல்லது பின்னோக்கி எண்ணவும்."),
+        # Q26
+        ("1,700 ₹ என்ற தொகை A, B, C ஆகியோருக்கு, B பெறுவதில் 2/3 பங்கை A-உம், C பெறுவதில் 1/4 பங்கை B-உம் பெறுமாறு பிரிக்கப்படுகிறது. A-இன் பங்கைக்காண்க.",
+         ["₹150", "₹250", "₹200", "₹300"], 2,
+         "C = 12x என்க. எனவே B = 3x, A = 2/3 × 3x = 2x. 2x + 3x + 12x = 17x = 1,700 → x = 100. A = ₹200. முக்கியக் கற்றல் கருத்து: மற்ற ஒவ்வொரு பங்கும் முழு எண்ணாக வருமாறு, அடிப்படைப் பங்குக்கு வசதியான மடங்கைத் தேர்ந்தெடுக்கவும்."),
+        # Q27
+        ("A, B, C, D, E, F என்ற ஆறு நண்பர்கள் ஒரு வட்ட மேசையைச் சுற்றி மையத்தை நோக்கி அமர்ந்துள்ளனர். A, D-க்கு எதிரே உள்ளார். B, A-க்கு உடனடியாக இடப்புறம் உள்ளார். C, D-க்கு உடனடியாக வலப்புறம் உள்ளார். E, A-க்கு அருகில் இல்லை. B-க்கு எதிரே அமர்ந்திருப்பவர் யார்?",
+         ["E", "C", "F", "D"], 0,
+         "A-ஐ இருக்கை 1 ஆகக் கொண்டு இருக்கைகளைக் கடிகாரத் திசையில் எண்ணிடவும்: D = இருக்கை 4. B (A-க்கு இடம், கடிகாரம்) = இருக்கை 2; C (D-க்கு வலம், எதிர்க்கடிகாரம்) = இருக்கை 3. E, A-க்கு அருகில் இல்லை (இருக்கைகள் 2, 6); எனவே E = 5, F = 6. B-க்கு (இருக்கை 2) எதிரே இருக்கை 5 = E. முக்கியக் கற்றல் கருத்து: முதலில் எதிரெதிர் இணையை நிலைநிறுத்தி, பின்னர் அண்டையர்களுக்கு வலம் = எதிர்க்கடிகாரம், இடம் = கடிகாரம் எனப் பயன்படுத்தவும்."),
+        # Q28
+        ("5 மாடிக் கட்டடத்தில் (தளம் 1 = அடி), ஒவ்வொரு தளத்திலும் ஒருவர் வசிக்கிறார். P ஓர் ஒற்றை எண் தளத்தில் வசிக்கிறார். Q, P-க்கு உடனடியாக மேலே வசிக்கிறார். R மேல் தளத்தில் வசிக்கிறார். S, P-க்குக் கீழே வசிக்கிறார். T 2-ஆம் தளத்தில் வசிக்கிறார். P எந்தத் தளத்தில் வசிக்கிறார்?",
+         ["3", "1", "4", "5"], 0,
+         "R = 5, T = 2. P ஒற்றை எண்; எனவே P = 1 அல்லது 3. S, P-க்குக் கீழே வசிப்பதால் P 1 ஆக இருக்க முடியாது. P = 3, Q = 4, S = 1. முக்கியக் கற்றல் கருத்து: மிகக் குறைந்த சாத்தியமான மதிப்பை நீக்க “கீழே” என்ற குறிப்பைப் பயன்படுத்தவும்."),
+        # Q29
+        ("ஒரு வரிசையில் மீனா முன்னிருந்து 10-ஆவதாகவும், சத்யா முன்னிருந்து 25-ஆவதாகவும் நிற்கின்றனர். அவர்களுக்கிடையே எத்தனை பேர் நிற்கின்றனர்?",
+         ["13", "16", "15", "14"], 3,
+         "இடையில் உள்ளவர்கள் = 25 − 10 − 1 = 14. முக்கியக் கற்றல் கருத்து: ஒரே முனையிலிருந்து எண்ணப்பட்ட இரண்டு இடங்களுக்கிடையே = பெரியது − சிறியது − 1."),
+        # Q30
+        ("சில சாக்லேட்டுகள் 4 குழந்தைகளுக்குப் பகிரப்படுகின்றன. முதலாமவர் அவற்றில் பாதியையும், இரண்டாமவர் மீதியில் பாதியையும், மூன்றாமவர் அதன் பின் மீதமுள்ளதில் பாதியையும் பெறுகின்றனர். நான்காவது குழந்தை மீதமுள்ள 5 சாக்லேட்டுகளைப் பெறுகிறது. மொத்தம் எத்தனை சாக்லேட்டுகள் இருந்தன?",
+         ["20", "30", "80", "40"], 3,
+         "மூன்று முறை பாதியாக்கிய பின், மீதம் மொத்தத்தில் 1/8 ஆகும். மொத்தத்தில் 1/8 = 5; எனவே மொத்தம் = 40. முக்கியக் கற்றல் கருத்து: இறுதி மீதியிலிருந்து பின்னோக்கிச் செயல்பட்டு, ஒவ்வொரு பாதியாக்கல் படியிலும் இருமடங்காக்கவும்."),
+    ]
+
+    # Combine Practice Set: 25 Worked + 30 Independent = 55 questions
+    practice_rows = []
+    for i in range(25):
+        q_en, opts_en, ans_idx, exp_en, diff = worked_en[i]
+        q_ta, opts_ta, _, exp_ta = worked_ta[i]
+        practice_rows.append((
+            q_en, json.dumps(opts_en, ensure_ascii=False), ans_idx, exp_en,
+            q_ta, json.dumps(opts_ta, ensure_ascii=False), exp_ta,
+            'Puzzles', diff, i + 1
+        ))
+
+    for j in range(30):
+        q_en, opts_en, ans_idx, exp_en, diff = indep_en[j]
+        q_ta, opts_ta, _, exp_ta = indep_ta[j]
+        practice_rows.append((
+            q_en, json.dumps(opts_en, ensure_ascii=False), ans_idx, exp_en,
+            q_ta, json.dumps(opts_ta, ensure_ascii=False), exp_ta,
+            'Puzzles', diff, 25 + j + 1
+        ))
+
+    # Graded Assessment: 30 questions
+    graded_rows = []
+    for k in range(30):
+        q_en, opts_en, ans_idx, exp_en, diff = grad_en[k]
+        q_ta, opts_ta, _, exp_ta = grad_ta[k]
+        graded_rows.append((
+            q_en, json.dumps(opts_en, ensure_ascii=False), ans_idx, exp_en,
+            q_ta, json.dumps(opts_ta, ensure_ascii=False), exp_ta,
+            'Puzzles', diff, k + 1
+        ))
+
+    sql_lines = [
+        "/* ============================================================================",
+        "   ExamPro LMS - Puzzles Course Seed Script (Unified Bilingual Model)",
+        "   - 1 Course: Puzzles / புதிர்கள்",
+        "   - 2 Assessments (Single unified assessment for both English & Tamil):",
+        "       1. Puzzles - Practice Set (puzzles-practice) [55 Questions]",
+        "          (25 Worked Examples + 30 Independent Practice in both English & Tamil)",
+        "       2. Puzzles - Graded Assessment (puzzles-graded) [30 Questions]",
+        "          (Assessment Questions 1-30 in both English & Tamil)",
+        "   ============================================================================ */",
+        "USE ExamProLMS;",
+        "GO",
+        "SET QUOTED_IDENTIFIER ON;",
+        "GO",
+        "",
+        "-- Step 1: Ensure bilingual columns exist in dbo.Assessments & dbo.Questions",
+        "IF COL_LENGTH(N'dbo.Assessments', N'TitleTa') IS NULL",
+        "    ALTER TABLE dbo.Assessments ADD TitleTa NVARCHAR(200) NULL;",
+        "IF COL_LENGTH(N'dbo.Assessments', N'DescriptionTa') IS NULL",
+        "    ALTER TABLE dbo.Assessments ADD DescriptionTa NVARCHAR(MAX) NULL;",
+        "IF COL_LENGTH(N'dbo.Questions', N'QuestionTextTa') IS NULL",
+        "    ALTER TABLE dbo.Questions ADD QuestionTextTa NVARCHAR(MAX) NULL;",
+        "IF COL_LENGTH(N'dbo.Questions', N'OptionsJsonTa') IS NULL",
+        "    ALTER TABLE dbo.Questions ADD OptionsJsonTa NVARCHAR(MAX) NULL;",
+        "IF COL_LENGTH(N'dbo.Questions', N'ExplanationTa') IS NULL",
+        "    ALTER TABLE dbo.Questions ADD ExplanationTa NVARCHAR(MAX) NULL;",
+        "GO",
+        "",
+        "BEGIN TRANSACTION;",
+        "",
+        "-- Clean previous Puzzles courses and assessments if present",
+        "DELETE FROM dbo.Assessments WHERE Slug IN (",
+        "    N'puzzles-practice', N'puzzles-graded',",
+        "    N'puzzles-practice-en', N'puzzles-graded-en',",
+        "    N'puzzles-practice-ta', N'puzzles-graded-ta'",
+        ");",
+        "DELETE FROM dbo.Courses WHERE Slug IN (N'puzzles');",
+        "",
+        "INSERT INTO dbo.Courses (Title, Slug, Description, OrderIndex)",
+        "VALUES (",
+        "    N'Puzzles / புதிர்கள்',",
+        "    N'puzzles',",
+        "    N'Comprehensive module on Circular & Square Seating, Building Floors, Scheduling, Age Comparison, Ranking & Distribution Puzzles for TNPSC Group 1, UPSC CSAT, SSC CGL & Banking exams in English & Tamil.',",
+        "    8",
+        ");",
+        "",
+        "DECLARE @CourseId INT = SCOPE_IDENTITY();",
+        "",
+        "-- Insert ONLY 2 Assessments: 1 Practice (55 Questions) and 1 Graded (30 Questions)",
+        "INSERT INTO dbo.Assessments (",
+        "    CourseId, Title, TitleTa, Slug, Description, DescriptionTa, Topic, Difficulty,",
+        "    DefaultDurationMinutes, MinDurationMinutes, TotalQuestions, PassPercentage,",
+        "    AttemptType, SequentialUnlock, LockdownEnabled, ProctoringEnabled, OrderIndex",
+        ")",
+        "VALUES",
+        "    (@CourseId, N'Puzzles - Practice Set', N'புதிர்கள் - பயிற்சித் தொகுப்பு', N'puzzles-practice',",
+        "     N'55 practice questions (Worked Examples + Independent Practice) with instant feedback & step-by-step solutions.',",
+        "     N'55 பயிற்சிக் கணக்குகள் (தீர்க்கப்பட்ட எடுத்துக்காட்டுகள் + சுயப்பயிற்சி) உடனடித் தீர்வுகளுடன்.',",
+        "     N'Puzzles', N'EASY', 60, 10, 55, 0, N'PRACTICE', 0, 0, 0, 1),",
+        "    (@CourseId, N'Puzzles - Graded Assessment', N'புதிர்கள் - மதிப்பீட்டுத் தேர்வு', N'puzzles-graded',",
+        "     N'Official proctored & timed assessment on Puzzles (30 Questions). Pass with 60% to master this topic.',",
+        "     N'புதிர்களுக்கான அதிகாரப்பூர்வக் கண்காணிப்புடன் கூடிய தேர்வு (30 வினாக்கள்). தேர்ச்சி 60%.',",
+        "     N'Puzzles', N'MEDIUM', 45, 15, 30, 60, N'GRADED', 1, 1, 1, 2);",
+        "",
+        "DECLARE @pracId INT = (SELECT AssessmentId FROM dbo.Assessments WHERE Slug = N'puzzles-practice');",
+        "DECLARE @gradId INT = (SELECT AssessmentId FROM dbo.Assessments WHERE Slug = N'puzzles-graded');",
+        "",
+        "-- Insert bilingual questions for @pracId (55 questions)",
+        "INSERT INTO dbo.Questions (AssessmentId, QuestionText, OptionsJson, CorrectIndex, Explanation, QuestionTextTa, OptionsJsonTa, ExplanationTa, Topic, Difficulty, OrderIndex)",
+        "VALUES"
+    ]
+
+    p_lines = []
+    for r in practice_rows:
+        q_en, opts_en, ans_idx, exp_en, q_ta, opts_ta, exp_ta, topic, diff, order = r
+        p_lines.append(
+            f"    (@pracId, {escape_sql(q_en)}, {escape_sql(opts_en)}, {ans_idx}, {escape_sql(exp_en)}, "
+            f"{escape_sql(q_ta)}, {escape_sql(opts_ta)}, {escape_sql(exp_ta)}, "
+            f"{escape_sql(topic)}, {escape_sql(diff)}, {order})"
+        )
+    sql_lines.append(",\n".join(p_lines) + ";")
+    sql_lines.append("")
+    sql_lines.append("-- Insert bilingual questions for @gradId (30 questions)")
+    sql_lines.append("INSERT INTO dbo.Questions (AssessmentId, QuestionText, OptionsJson, CorrectIndex, Explanation, QuestionTextTa, OptionsJsonTa, ExplanationTa, Topic, Difficulty, OrderIndex)")
+    sql_lines.append("VALUES")
+
+    g_lines = []
+    for r in graded_rows:
+        q_en, opts_en, ans_idx, exp_en, q_ta, opts_ta, exp_ta, topic, diff, order = r
+        g_lines.append(
+            f"    (@gradId, {escape_sql(q_en)}, {escape_sql(opts_en)}, {ans_idx}, {escape_sql(exp_en)}, "
+            f"{escape_sql(q_ta)}, {escape_sql(opts_ta)}, {escape_sql(exp_ta)}, "
+            f"{escape_sql(topic)}, {escape_sql(diff)}, {order})"
+        )
+    sql_lines.append(",\n".join(g_lines) + ";")
+    sql_lines.append("")
+    sql_lines.append("COMMIT;")
+    sql_lines.append("PRINT 'Puzzles Course seeded successfully: 1 Practice Assessment (55 Qs) and 1 Graded Assessment (30 Qs), fully bilingual (English & Tamil).';")
+    sql_lines.append("GO")
+
+    out_path = r"c:\Users\Lenovo\Downloads\LMS\exampro-lms\database\11_puzzles_bilingual_seed.sql"
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(sql_lines) + "\n")
+    print(f"Generated {out_path} with {len(practice_rows)} practice Qs and {len(graded_rows)} graded Qs.")
+
+if __name__ == "__main__":
+    main()

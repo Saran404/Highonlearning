@@ -1,0 +1,195 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    overscroll-behavior-y: contain;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+  }
+  body {
+    @apply bg-canvas font-sans text-navy antialiased;
+    overflow-x: hidden;
+    width: 100%;
+    line-height: 1.5;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+
+  /* Completely disable text highlight styling across all elements */
+  ::selection {
+    background: transparent !important;
+    color: inherit !important;
+  }
+  ::-moz-selection {
+    background: transparent !important;
+    color: inherit !important;
+  }
+
+  /* Form fields remain editable for user input */
+  input, textarea, [contenteditable="true"] {
+    -webkit-user-select: text !important;
+    -moz-user-select: text !important;
+    -ms-user-select: text !important;
+    user-select: text !important;
+  }
+
+  h1, h2, h3 { @apply font-semibold tracking-tight; }
+  :focus-visible { outline: 2px solid #0284c7; outline-offset: 2px; }
+  button, a { -webkit-tap-highlight-color: transparent; }
+}
+
+@layer components {
+  /* Android 48dp Minimum Touch Target */
+  .m3-target-48 {
+    min-height: 48px;
+    min-width: 48px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Tactile Material Touch & Active State */
+  .m3-touch {
+    transition: transform 0.12s cubic-bezier(0.2, 0, 0, 1), background-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .m3-touch:active {
+    transform: scale(0.975);
+  }
+
+  /* Material 3 Card Variants */
+  .m3-card {
+    @apply rounded-2xl border border-line bg-white transition-all;
+    box-shadow: 0px 1px 3px 1px rgba(0, 0, 0, 0.08), 0px 1px 2px 0px rgba(0, 0, 0, 0.12);
+  }
+  .m3-card-high {
+    @apply rounded-2xl border border-sky-100 bg-white transition-all;
+    box-shadow: 0px 2px 6px 2px rgba(0, 0, 0, 0.08), 0px 1px 2px 0px rgba(0, 0, 0, 0.12);
+  }
+  .m3-card-flat {
+    @apply rounded-2xl border border-transparent;
+    background-color: #f0f4f9;
+  }
+
+  /* M3 Chip */
+  .m3-chip {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-line bg-white px-3.5 py-1.5 text-xs font-semibold text-navy-700 transition-all m3-touch;
+    min-height: 36px;
+  }
+  .m3-chip-active {
+    @apply border-sky-300 bg-sky-100 text-sky-950 font-bold shadow-xs;
+  }
+
+  /* Existing panel backward-compatibility enhanced with M3 rounded-2xl */
+  .panel {
+    @apply rounded-2xl border border-line bg-white;
+    box-shadow: 0px 1px 3px 1px rgba(0, 0, 0, 0.08), 0px 1px 2px 0px rgba(0, 0, 0, 0.12);
+  }
+  .panel-gold { @apply rounded-2xl border border-amber-200 bg-white shadow-gold; }
+  .panel-highlight {
+    @apply rounded-2xl border border-sky-200 bg-white;
+    box-shadow: 0px 2px 6px 2px rgba(0, 0, 0, 0.08), 0px 1px 2px 0px rgba(0, 0, 0, 0.12);
+  }
+
+  /* Android-Optimized Material Text Field */
+  .field {
+    @apply w-full rounded-xl border border-line bg-white px-4 py-3 text-base sm:text-sm text-navy placeholder:text-navy-300 focus:border-sky-600 focus:outline-none focus:ring-2 focus:ring-sky-500/20 transition-all;
+    min-height: 48px;
+  }
+  .label { @apply mb-1.5 block text-xs sm:text-sm font-semibold tracking-wide text-navy-800; }
+
+  /* Exam paper: questions are set in a serif face like a printed paper */
+  .paper { @apply font-serif text-[1.0625rem] leading-relaxed text-navy-900 sm:text-lg; }
+  /* Exam mode blocks text selection so questions cannot be copied */
+  .no-select { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+  .gradient-brand { @apply bg-gradient-to-r from-navy-900 via-sky-700 to-sky-600 text-white; }
+  .gradient-gold { @apply bg-gradient-to-r from-amber-500 to-orange-500 text-white; }
+}
+
+@layer utilities {
+  /* Safe Area Handling for Notches, Punch Holes & Android Gesture Bar */
+  .pt-safe {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .pb-safe-nav {
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 5.5rem);
+  }
+  .bottom-safe-fab {
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 5.5rem);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}
+
+/* Screen Capture Protection: Blurs, blacks out, and blanks root DOM when screenshot or blur is triggered */
+html.screen-capture-protected,
+body.screen-capture-protected {
+  background-color: #000000 !important;
+  overflow: hidden !important;
+}
+
+html.screen-capture-protected #root,
+body.screen-capture-protected #root {
+  filter: blur(60px) brightness(0) !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+
+/* Print and Screen-to-PDF Protection: Blanks output if printing or PDF export is triggered */
+@media print {
+  html, body, #root {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+  }
+}
+
+/* Mobile & Web Content Capture Prevention: Disable iOS/Android image save callout sheets */
+*, *::before, *::after {
+  -webkit-touch-callout: none !important;
+}
+
+img, video, canvas, svg, picture {
+  -webkit-touch-callout: none !important;
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  -webkit-user-drag: none !important;
+}
+
+/* Hide Netlify Badge and Collaborative Deploy Preview Drawer */
+#nl-badge,
+.nl-badge,
+[id*="nl-badge"],
+[class*="nl-badge"],
+netlify-drawer,
+[data-netlify-drawer],
+div[class*="netlify"] {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  position: absolute !important;
+  top: -9999px !important;
+  left: -9999px !important;
+  clip: rect(0, 0, 0, 0) !important;
+  clip-path: inset(50%) !important;
+  z-index: -9999 !important;
+}

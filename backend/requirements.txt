@@ -1,0 +1,14 @@
+fastapi
+uvicorn[standard]
+sqlalchemy>=2.0
+pyodbc
+pydantic>=2
+pydantic-settings
+email-validator
+python-jose[cryptography]
+passlib[bcrypt]
+# passlib 1.7.4 is incompatible with bcrypt>=4.1 (version-detection error) - keep this pin.
+bcrypt==4.0.1
+python-multipart
+pillow
+python-dotenv

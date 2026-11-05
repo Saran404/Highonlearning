@@ -1,0 +1,53 @@
+# One-command local stack:  docker compose up --build
+# Then create users:        docker compose exec backend python -m scripts.create_admin --demo
+services:
+  db:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: ${SA_PASSWORD:-Your_password123}
+    ports: ["1433:1433"]
+    volumes: [dbdata:/var/opt/mssql]
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q 'SELECT 1' || exit 1"]
+      interval: 10s
+      retries: 12
+
+  db-init:            # runs the SQL scripts once, then exits
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      MSSQL_SA_PASSWORD: ${SA_PASSWORD:-Your_password123}
+    volumes: [./database:/sql:ro]
+    entrypoint: ["/bin/bash", "-c", "for f in /sql/01_schema.sql /sql/02_seed_demo.sql; do /opt/mssql-tools18/bin/sqlcmd -C -b -S db -U sa -P \"$$MSSQL_SA_PASSWORD\" -i $$f || exit 1; done"]
+
+  backend:
+    build: ./backend
+    depends_on:
+      db-init: { condition: service_completed_successfully }
+    environment:
+      DB_DRIVER: ${DB_DRIVER:-ODBC Driver 17 for SQL Server}
+      DB_SERVER: ${DB_SERVER:-db}
+      DB_NAME: ${DB_NAME:-ExamProLMS}
+      DB_USER: ${DB_USER:-sa}
+      DB_PASSWORD: ${DB_PASSWORD:-${SA_PASSWORD:-Your_password123}}
+      DB_TRUSTED_CONNECTION: ${DB_TRUSTED_CONNECTION:-false}
+      DB_TRUST_SERVER_CERTIFICATE: ${DB_TRUST_SERVER_CERTIFICATE:-true}
+      JWT_SECRET: ${JWT_SECRET:-dev-only-change-me}
+      CORS_ORIGINS: http://localhost:5173,http://localhost:8080
+      SINGLE_DEVICE_MODE: ${SINGLE_DEVICE_MODE:-strict}
+    volumes: [uploads:/srv/uploads]
+    ports: ["8000:8000"]
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: http://localhost:8000/api
+    depends_on: [backend]
+    ports: ["8080:80"]
+
+volumes:
+  dbdata:
+  uploads:

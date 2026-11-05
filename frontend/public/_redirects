@@ -1,0 +1,5 @@
+# Proxy API requests to live Render backend (eliminates browser CORS & Mixed Content issues)
+/api/*  https://highonlearning.onrender.com/api/:splat  200!
+
+# SPA client-side routing fallback
+/*      /index.html                                     200

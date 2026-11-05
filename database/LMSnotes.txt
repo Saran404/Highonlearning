@@ -1,0 +1,17 @@
+admin@exampro.io
+Admin@12345
+
+
+frontend
+cd C:\Users\Lenovo\Downloads\LMS\exampro-lms\frontend
+copy .env.example .env
+npm install
+npm run dev
+
+backend
+C:\Users\Lenovo\Downloads\LMS\exampro-lms\backend
+python -m venv .venv
+.venv\Scripts\activate.bat
+pip install -r requirements-dev.txt
+copy .env.example .env
+uvicorn app.main:app --reload --port 8000
